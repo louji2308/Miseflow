@@ -1,0 +1,54 @@
+studioVersion:
+  major: 5
+  minor: 24
+  patch: 1
+  build: 26100516
+  type: Public
+coreVersion: 377
+clientVersion: 14.21
+updateCheckpoint: 107
+sceneId: 0a1ccb1a-fe88-4fbb-9883-e3af3c75fd99
+metaInfo:
+  hints:
+    []
+  tags:
+    []
+  lensName: Untitled
+  lensDescriptors:
+    []
+  lensApplicableContext:
+    - live_camera
+    - reply_camera
+    - video_chat
+  lensApplicability:
+    - Front
+    - Back
+  lensClientCompatibilities:
+    - Spectacles
+  platformBundlesEnabled: false
+  iconHash: ""
+  videoPreviewHash: ""
+  localizationsHash: ""
+  fromTemplateName: Default
+  fromTemplateUrl: Lens Studio 5.24.1.26100516
+  activationCamera: Front
+  sourceMapEnabled: false
+  shaderCacheInvalidationEnabled: false
+  usingMinClientVersions: false
+  androidMinClientVersion:
+    major: 0
+    minor: 0
+    patch: 0
+    build: 0
+  iOSMinClientVersion:
+    major: 0
+    minor: 0
+    patch: 0
+    build: 0
+  documentId: c1728316-1fa4-4d11-a7ce-d24f0e8e4370
+  originalDocumentId: f3d524c5-ac07-44a7-b03a-e07d591396ec
+  packageId: ""
+  packageVersion: ""
+  spkPrivilegeLevel: Generic
+  gluboEnabled: false
+targetPlatform: Spectacles
