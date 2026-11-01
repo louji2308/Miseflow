@@ -1,0 +1,46 @@
+- !<AssetImportMetadata/9f7d1856-cccd-4442-8b5a-b64ec40fa23b>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> b2b8a282-6c47-44af-b7b0-945af9b39d44
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> b2b8a282-6c47-44af-b7b0-945af9b39d44
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 5262d214-b22c-46d2-9803-8881ec85e879
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/5262d214-b22c-46d2-9803-8881ec85e879>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 4447ef2a-d6d2-4cfb-bbc4-f85061117699
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    autoRunScenarios: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - autoRunScenarios: true
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input bool autoRunScenarios

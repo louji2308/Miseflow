@@ -1,0 +1,52 @@
+- !<AssetImportMetadata/dcfd145b-bfa4-4eb6-b171-078d3e725b04>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 67fa1300-8308-4dc4-9a45-18278b4c45ff
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 67fa1300-8308-4dc4-9a45-18278b4c45ff
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 76be82b7-9fb9-43eb-bfcc-e0b952fadcae
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/76be82b7-9fb9-43eb-bfcc-e0b952fadcae>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: fd1cc2f4-4308-4514-82a8-e26def94fbeb
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    prepDurationSeconds: false
+    saucepotDurationSeconds: false
+    skilletDurationSeconds: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - skilletDurationSeconds: !<float> 60.000000
+      saucepotDurationSeconds: !<float> 50.000000
+      prepDurationSeconds: !<float> 45.000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input float skilletDurationSeconds = 60
+    - // @input float saucepotDurationSeconds = 50
+    - // @input float prepDurationSeconds = 45

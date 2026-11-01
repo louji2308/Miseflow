@@ -1,0 +1,49 @@
+- !<AssetImportMetadata/8a9eed8b-da09-4e45-9443-cb10b3bef1b2>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 85bb8e43-3432-42fd-a791-7d9939ee4046
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 85bb8e43-3432-42fd-a791-7d9939ee4046
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> c4364979-3a4d-4144-87ac-822a17f3d7ec
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/c4364979-3a4d-4144-87ac-822a17f3d7ec>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 09a48fe6-31f0-4376-9842-cc3edc9c4010
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    attentionConduitObject: false
+    transferArcObject: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - transferArcObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      attentionConduitObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input SceneObject transferArcObject
+    - // @input SceneObject attentionConduitObject

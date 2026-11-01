@@ -1,0 +1,58 @@
+- !<AssetImportMetadata/8bf97da4-f0b5-43a4-92a7-81f952a03697>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 68633994-ac2a-45c1-92b3-e1b1ead44b19
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 68633994-ac2a-45c1-92b3-e1b1ead44b19
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 1a8cbc95-973f-4e6c-99e6-514dcf222253
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/1a8cbc95-973f-4e6c-99e6-514dcf222253>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 1b2d84e0-da0b-46a9-b790-74a69ecd00fe
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    laserCurtainObject: false
+    portionDomeObject: false
+    spacingCm: false
+    startPositionX: false
+    totalSlices: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - spacingCm: 1.500000
+      totalSlices: !<float> 8.000000
+      startPositionX: !<float> -8.000000
+      laserCurtainObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      portionDomeObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input float spacingCm = 1.5
+    - // @input float totalSlices = 8
+    - // @input float startPositionX = -8
+    - // @input SceneObject laserCurtainObject
+    - // @input SceneObject portionDomeObject

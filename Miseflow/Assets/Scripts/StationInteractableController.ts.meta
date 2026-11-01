@@ -1,0 +1,79 @@
+- !<AssetImportMetadata/363e1895-07db-44d9-9192-8aba73f5833e>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> c6e95851-de1e-437f-8b4d-54f37e312707
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> c6e95851-de1e-437f-8b4d-54f37e312707
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 8a7017a8-dc1a-4bd6-87af-87189a09aff3
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/8a7017a8-dc1a-4bd6-87af-87189a09aff3>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 63407d6c-8a40-42cc-8bff-703aeaea4ccc
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    dagController: false
+    debriefCard: false
+    debriefText: false
+    driftDecisionCard: false
+    driftDecisionText: false
+    prepBlueprint: false
+    prepStatusLabel: false
+    rehearsalPropsRoot: false
+    saucepotStatusLabel: false
+    skilletStatusLabel: false
+    transferArc: false
+    visionInspector: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - prepBlueprint: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      dagController: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      transferArc: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      visionInspector: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      prepStatusLabel: !<reference.Text3D> 00000000-0000-0000-0000-000000000000
+      skilletStatusLabel: !<reference.Text3D> 00000000-0000-0000-0000-000000000000
+      saucepotStatusLabel: !<reference.Text3D> 00000000-0000-0000-0000-000000000000
+      debriefCard: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      debriefText: !<reference.Text3D> 00000000-0000-0000-0000-000000000000
+      driftDecisionCard: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      driftDecisionText: !<reference.Text3D> 00000000-0000-0000-0000-000000000000
+      rehearsalPropsRoot: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input AssignableType_1 prepBlueprint
+    - // @input AssignableType_2 dagController
+    - // @input AssignableType_3 transferArc
+    - // @input AssignableType_4 visionInspector
+    - // @input Component.Text3D prepStatusLabel
+    - // @input Component.Text3D skilletStatusLabel
+    - // @input Component.Text3D saucepotStatusLabel
+    - // @input SceneObject debriefCard
+    - // @input Component.Text3D debriefText
+    - // @input SceneObject driftDecisionCard
+    - // @input Component.Text3D driftDecisionText
+    - // @input SceneObject rehearsalPropsRoot

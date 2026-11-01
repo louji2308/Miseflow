@@ -1,0 +1,67 @@
+- !<AssetImportMetadata/df8a441c-2f75-461b-a79a-3c1e67ad35db>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> e71bf31a-a6a5-4de0-9582-13ea7c0f77c9
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> e71bf31a-a6a5-4de0-9582-13ea7c0f77c9
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 93654c9b-b2c2-491d-9c20-24a23e3dfc86
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/93654c9b-b2c2-491d-9c20-24a23e3dfc86>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: b854834e-5eb5-4e40-91a4-e47587d41ae7
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    dagController: false
+    innerTargetObject: false
+    matActive: false
+    matAlert: false
+    matHold: false
+    matReady: false
+    middleRingObject: false
+    stationId: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - stationId: SKILLET
+      middleRingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      innerTargetObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      dagController: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      matReady: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      matActive: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      matAlert: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      matHold: !<reference.Material> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - '// @input string stationId = "SKILLET"'
+    - // @input SceneObject middleRingObject
+    - // @input SceneObject innerTargetObject
+    - // @input AssignableType_1 dagController
+    - // @input Asset.Material matReady
+    - // @input Asset.Material matActive
+    - // @input Asset.Material matAlert
+    - // @input Asset.Material matHold

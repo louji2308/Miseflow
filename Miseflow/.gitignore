@@ -26,3 +26,6 @@ Workspaces/**
 ls-live-instance.json
 ls-live-instance.json.tmp
 # END Lens Studio managed Agents-Docs block
+
+# Added by Lens Studio (LEAF plugin)
+leaf_plugin_settings.json
