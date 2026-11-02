@@ -1,0 +1,6 @@
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+Miseflow/Assets/Scripts/AI/LocalSecrets.ts
+Miseflow/Assets/Scripts/AI/LocalSecrets.ts.meta

@@ -8,7 +8,7 @@ import { StationInteractableController } from "./StationInteractableController";
 import { RapidRouterVisionService } from "./AI/RapidRouterVisionService";
 import { VisionScanStandIn } from "./AI/VisionScanStandIn";
 import { GazeEdgeBeacon } from "./GazeEdgeBeacon";
-import { DAGCounterConduit } from "./DAGCounterConduit";
+import { DAGCounterConduit, createWorldIcon, splitMetric, layoutSplitText } from "./DAGCounterConduit";
 import { DiegeticChronoRing } from "./DiegeticChronoRing";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
 
@@ -47,26 +47,34 @@ const COLOR_GLASS = new vec4(0.04, 0.06, 0.1, 1.0);
 const CAM_LOCAL = new vec3(0, 42.6, 54.6);
 
 // Pill geometry (cm)
-const PILL_W = 9.2;
-const PILL_PAD = 0.28;
-const PILL_METRIC_H = 1.12;
-const PILL_ACTION_H = 0.88;
-const PILL_GAP = 0.06;
+// v5 capsule labels: dark glass, hairline accent outline, icon left, white label + accent value
+const PILL_W = 10.4;
+const PILL_PAD = 0.3;
+const PILL_METRIC_H = 1.42;
+const PILL_ACTION_H = 0.9;
+const PILL_GAP = 0.02;
 const PILL_H_COLLAPSED = PILL_PAD * 2 + PILL_METRIC_H;
 const PILL_H_EXPANDED = PILL_PAD * 2 + PILL_METRIC_H + PILL_GAP + PILL_ACTION_H;
-const PILL_METRIC_SIZE = 42;
+const PILL_METRIC_SIZE = 52;
 const PILL_ACTION_SIZE = 30;
+const PILL_ICON = 1.25;
+const PILL_BORDER = 0.065;
+
+const ICON_FIRE = requireAsset("../Icons/local_fire_department.png") as Texture;
+const ICON_POT = requireAsset("../Icons/stockpot.png") as Texture;
+const ICON_CUT = requireAsset("../Icons/content_cut.png") as Texture;
+const ICON_CLOCHE = requireAsset("../Icons/room_service.png") as Texture;
 
 // Pill anchors = bottom-centre of each pill, StationsRoot-local. Stations:
 // skillet (-11.2,-0.22,-1.5), saucier (0,-0.22,-10.5), board (10.5,0.64,-3.0).
 const SKILLET_PILL_ANCHOR = new vec3(-11.2, 6.0, -4.0);
 const SKILLET_STEM_FOOT_Y = 1.6;
-const SAUCE_PILL_ANCHOR = new vec3(0.0, 8.6, -12.0);
+const SAUCE_PILL_ANCHOR = new vec3(0.0, 10.4, -12.0);
 const SAUCE_STEM_FOOT_Y = 4.9;
 const PREP_PILL_ANCHOR = new vec3(12.0, 5.6, -6.5);
 const PREP_STEM_FOOT_Y = 1.6;
-const CHRONO_CENTER = new vec3(0.0, 19.5, -16.0);
-const DIRECTOR_CENTER = new vec3(0.0, -0.6, 13.0);
+const CHRONO_CENTER = new vec3(0.0, 19.0, -16.0);
+const DIRECTOR_CENTER = new vec3(0.0, -1.0, 13.4);
 
 // How long transient expansions stay open before receding (seconds)
 const EXPAND_PULSE_SEC = 5.0;
@@ -153,8 +161,11 @@ interface Pill {
   root: SceneObject;
   glassObj: SceneObject;
   glass: GlassStyle;
-  metricText: Text;
+  metricText: Text; // label part ("SEAR"), white
+  valueText: Text; // value part ("01:00"), accent colour
   actionText: Text;
+  iconImage: Image | null;
+  metricStr: string;
   stem: GlassStyle | null;
   stemObj: SceneObject | null;
   foot: GlassStyle | null;
@@ -194,6 +205,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private prepPill?: Pill;
   private chronoGlass?: GlassStyle;
   private chronoText?: Text;
+  private chronoValue?: Text;
+  private chronoStr: string = "";
   private directorButtons: DirectorButton[] = [];
   private warpButton?: DirectorButton;
 
@@ -374,9 +387,9 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private buildSpatialInterface(): void {
     const root = this.getSceneObject();
 
-    this.skilletPill = this.buildPill(root, "SkilletStationUI", SKILLET_PILL_ANCHOR, SKILLET_STEM_FOOT_Y, COLOR_GOLD_HEAT, "SEAR 01:00", "FLIP AT ZERO");
-    this.saucePill = this.buildPill(root, "SauceStationUI", SAUCE_PILL_ANCHOR, SAUCE_STEM_FOOT_Y, COLOR_CYAN_PREP, "SAUCE 00:50", "WAITS ON PREP");
-    this.prepPill = this.buildPill(root, "PrepStationUI", PREP_PILL_ANCHOR, PREP_STEM_FOOT_Y, COLOR_CYAN_PREP, "CUT 0/8", "SLICE ON GUIDES");
+    this.skilletPill = this.buildPill(root, "SkilletStationUI", SKILLET_PILL_ANCHOR, SKILLET_STEM_FOOT_Y, COLOR_GOLD_HEAT, "SEAR 01:00", "FLIP AT ZERO", ICON_FIRE);
+    this.saucePill = this.buildPill(root, "SauceStationUI", SAUCE_PILL_ANCHOR, SAUCE_STEM_FOOT_Y, COLOR_CYAN_PREP, "SAUCE 00:50", "WAITS ON PREP", ICON_POT);
+    this.prepPill = this.buildPill(root, "PrepStationUI", PREP_PILL_ANCHOR, PREP_STEM_FOOT_Y, COLOR_CYAN_PREP, "CUT 0/8", "SLICE ON GUIDES", ICON_CUT);
     this.prepPill.targetH = PILL_H_EXPANDED; // the cook's first task starts open
     this.prepPill.curH = PILL_H_EXPANDED;
     this.layoutPill(this.prepPill);
@@ -444,7 +457,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     stemFootY: number,
     accent: vec4,
     metric: string,
-    action: string
+    action: string,
+    icon: Texture | null = null
   ): Pill {
     const existing = findByName(parent, name);
     if (existing) existing.destroy();
@@ -461,39 +475,34 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       `${name}_Glass`,
       new vec3(0, h / 2, 0),
       new vec2(PILL_W, h),
-      withAlpha(COLOR_GLASS, 0.9),
+      withAlpha(COLOR_GLASS, 0.88),
       withAlpha(accent, 0.95),
-      0.1,
+      PILL_BORDER,
       h / 2,
-      0.86
+      0.9
     );
 
-    const metricText = this.createText(
-      root,
-      `${name}_Metric`,
-      metric,
-      PILL_METRIC_SIZE,
-      700,
-      COLOR_TEXT_HEADING,
-      new vec3(0, PILL_PAD + PILL_METRIC_H / 2, 0.03),
-      PILL_W - 0.7,
-      PILL_METRIC_H
-    );
+    let iconImage: Image | null = null;
+    if (icon) {
+      iconImage = createWorldIcon(root, `${name}_Icon`, icon, PILL_ICON, new vec3(0, 0, 0.03), accent);
+    }
+
+    const metricText = this.createText(root, `${name}_Metric`, metric, PILL_METRIC_SIZE, 700, COLOR_TEXT_HEADING, new vec3(0, 0, 0.03), PILL_W - 0.7, PILL_METRIC_H);
+    const valueText = this.createText(root, `${name}_Value`, "", PILL_METRIC_SIZE, 700, accent, new vec3(0, 0, 0.03), PILL_W - 0.7, PILL_METRIC_H);
     const actionText = this.createText(
       root,
       `${name}_Action`,
       action,
       PILL_ACTION_SIZE,
-      800,
-      accent,
+      700,
+      COLOR_TEXT_HEADING,
       new vec3(0, PILL_PAD + PILL_ACTION_H / 2, 0.03),
       PILL_W - 0.7,
       PILL_ACTION_H
     );
     actionText.getSceneObject().enabled = false;
 
-    // Tether: thin luminous stem + foot dot so the pill reads as attached to
-    // its cookware rather than floating in front of the face.
+    // Leader: hairline stem from the pill's bottom-centre down to the cookware, ending in a dot.
     let stem: GlassStyle | null = null;
     let stemObj: SceneObject | null = null;
     let foot: GlassStyle | null = null;
@@ -504,12 +513,12 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         parent,
         `${name}_Stem`,
         stemPos,
-        new vec2(0.09, stemLen),
-        withAlpha(accent, 0.75),
-        withAlpha(accent, 0.75),
+        new vec2(0.05, stemLen),
+        withAlpha(accent, 0.9),
+        withAlpha(accent, 0.9),
         0.0,
-        0.045,
-        0.8
+        0.025,
+        0.9
       );
       s.obj.getTransform().setLocalRotation(yawToCamera(stemPos));
       stem = s.style;
@@ -519,22 +528,25 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         s.obj,
         `${name}_StemFoot`,
         new vec3(0, -stemLen / 2, 0.01),
-        new vec2(0.42, 0.42),
-        withAlpha(accent, 0.95),
-        withAlpha(COLOR_TEXT_HEADING, 0.9),
-        0.05,
-        0.21,
-        0.95
+        new vec2(0.34, 0.34),
+        withAlpha(accent, 1.0),
+        withAlpha(accent, 1.0),
+        0.0,
+        0.17,
+        1.0
       );
       foot = f.style;
     }
 
-    return {
+    const pill: Pill = {
       root,
       glassObj: glass.obj,
       glass: glass.style,
       metricText,
+      valueText,
       actionText,
+      iconImage,
+      metricStr: "",
       stem,
       stemObj,
       foot,
@@ -545,6 +557,24 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       accent,
       metricColor: COLOR_TEXT_HEADING,
     };
+    this.setPillMetric(pill, metric);
+    this.layoutPill(pill);
+    return pill;
+  }
+
+  /** Split "SEAR 01:00" into a white label + accent value, centred in the area right of the icon. */
+  private setPillMetric(p: Pill, metric: string): void {
+    p.metricStr = metric;
+    const [l, v] = splitMetric(metric);
+    const iconSpan = p.iconImage ? PILL_ICON + 0.3 : 0;
+    const left = -PILL_W / 2 + PILL_PAD + 0.25 + iconSpan;
+    const right = PILL_W / 2 - PILL_PAD - 0.25;
+    const y = p.curH - PILL_PAD - PILL_METRIC_H / 2;
+    const total = layoutSplitText(p.metricText, p.valueText, l, v, PILL_METRIC_SIZE, (left + right) / 2, y, 0.03, right - left);
+    if (p.iconImage) {
+      const ix = Math.max(-PILL_W / 2 + PILL_PAD + 0.15 + PILL_ICON / 2, (left + right) / 2 - total / 2 - 0.4 - PILL_ICON / 2);
+      p.iconImage.getSceneObject().getTransform().setLocalPosition(new vec3(ix, y, 0.03));
+    }
   }
 
   private buildChronometer(parent: SceneObject, center: vec3): void {
@@ -557,31 +587,44 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     root.getTransform().setLocalRotation(faceCamera(center));
     root.createComponent("Component.Canvas");
 
-    const w = 7.4;
-    const h = 1.45;
+    const w = 12.6;
+    const h = 2.0;
     const g = this.createGlass(
       root,
       "PlateAnchor_Glass",
       new vec3(0, 0, 0),
       new vec2(w, h),
-      withAlpha(COLOR_GLASS, 0.9),
+      withAlpha(COLOR_GLASS, 0.88),
       withAlpha(COLOR_EMERALD_DONE, 0.95),
-      0.09,
+      PILL_BORDER,
       h / 2,
-      0.86
+      0.9
     );
     this.chronoGlass = g.style;
-    this.chronoText = this.createText(
+    createWorldIcon(root, "PlateAnchor_Icon", ICON_CLOCHE, 1.35, new vec3(-w / 2 + 1.55, 0, 0.03), COLOR_TEXT_HEADING);
+    this.createGlass(
       root,
-      "PlateAnchorTime",
-      "PLATE IN 06:40",
-      32,
-      700,
-      COLOR_TEXT_HEADING,
-      new vec3(0, 0, 0.03),
-      w - 0.6,
-      h - 0.3
+      "PlateAnchor_Divider",
+      new vec3(-w / 2 + 2.75, 0, 0.02),
+      new vec2(0.05, h * 0.5),
+      withAlpha(COLOR_SILVER, 0.7),
+      withAlpha(COLOR_SILVER, 0.7),
+      0.0,
+      0.025,
+      0.9
     );
+    this.chronoText = this.createText(root, "PlateAnchorTime", "PLATE IN", 54, 700, COLOR_TEXT_HEADING, new vec3(0, 0, 0.03), w - 0.6, h - 0.3);
+    this.chronoValue = this.createText(root, "PlateAnchorValue", "06:40", 54, 700, COLOR_EMERALD_DONE, new vec3(0, 0, 0.03), w - 0.6, h - 0.3);
+    this.setChrono("PLATE IN 06:40");
+  }
+
+  private setChrono(full: string): void {
+    if (!this.chronoText || !this.chronoValue || full === this.chronoStr) return;
+    this.chronoStr = full;
+    const [l, v] = splitMetric(full);
+    const left = -12.6 / 2 + 3.0;
+    const right = 12.6 / 2 - 0.4;
+    layoutSplitText(this.chronoText, this.chronoValue, l, v, 54, (left + right) / 2, 0, 0.03);
   }
 
   // --------------------------------------------------------------------------
@@ -597,16 +640,43 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     dock.getTransform().setLocalRotation(faceCamera(center));
     dock.createComponent("Component.Canvas");
 
-    const BTN_W = 2.4;
-    const BTN_H = 1.1;
-    const BTN_GAP = 0.18;
-    const TAG_W = 1.3;
-    const TAG_GAP = 0.12;
-    const GROUP_GAP = 0.55;
-    const PAD_X = 0.32;
-    const PANEL_H = 1.9;
-    const groupW = TAG_W + TAG_GAP + 3 * BTN_W + 2 * BTN_GAP;
-    const panelW = PAD_X * 2 + groupW * 2 + GROUP_GAP;
+    // v5 capsule dock: COOK chip | Step Cut, Transfer, AI Vision | SIM chip | +25s Drift, 10x Warp, Reset
+    const BTN_H = 1.3;
+    const BTN_GAP = 0.32;
+    const TAG_W = 2.5;
+    const GROUP_GAP = 0.9;
+    const PAD_X = 0.45;
+    const PANEL_H = 2.2;
+    const COLOR_NEUTRAL = new vec4(0.62, 0.66, 0.72, 1.0);
+
+    type BtnSpec = { name: string; label: string; accent: vec4; w: number; onPress: () => void };
+    const groups: { tag: string; tagColor: vec4; buttons: BtnSpec[] }[] = [
+      {
+        tag: "COOK",
+        tagColor: COLOR_CYAN_PREP,
+        buttons: [
+          { name: "UI_Btn_StepChop", label: "Step Cut", accent: COLOR_NEUTRAL, w: 3.3, onPress: () => { if (this.controller) this.controller.onStepChopPressed(); } },
+          { name: "UI_Btn_Transfer", label: "Transfer", accent: COLOR_NEUTRAL, w: 3.3, onPress: () => { if (this.controller) this.controller.onTransferPressed(); } },
+          { name: "UI_Btn_InspectSear", label: "AI Vision", accent: COLOR_VIOLET_AI, w: 3.5, onPress: () => { this.triggerRealAiVisionScan(); } },
+        ],
+      },
+      {
+        tag: "SIM",
+        tagColor: COLOR_AMBER_DRIFT,
+        buttons: [
+          { name: "UI_Btn_TriggerDrift", label: "+25s Drift", accent: COLOR_AMBER_DRIFT, w: 3.6, onPress: () => { if (this.controller) this.controller.onSimulatePrepDrift(); } },
+          { name: "UI_Btn_TimeWarp", label: "10x Warp", accent: COLOR_EMERALD_DONE, w: 3.5, onPress: () => { if (this.controller) this.controller.onToggleTimeWarpPressed(); } },
+          { name: "UI_Btn_Reset", label: "Reset", accent: COLOR_NEUTRAL, w: 2.9, onPress: () => { if (this.controller) this.controller.onResetPressed(); } },
+        ],
+      },
+    ];
+    let panelW = PAD_X * 2 + GROUP_GAP;
+    for (const g of groups) {
+      panelW += TAG_W + GROUP_GAP * 0.5;
+      g.buttons.forEach((b, i) => {
+        panelW += b.w + (i < g.buttons.length - 1 ? BTN_GAP : 0);
+      });
+    }
 
     this.createGlass(
       dock,
@@ -615,63 +685,43 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       new vec2(panelW, PANEL_H),
       withAlpha(COLOR_GLASS, 0.88),
       withAlpha(COLOR_SILVER, 0.55),
-      0.06,
-      0.6,
-      0.84
+      0.05,
+      PANEL_H / 2,
+      0.9
     );
 
     const content = global.scene.createSceneObject("Director_Content");
     content.setParent(dock);
     content.getTransform().setLocalPosition(new vec3(0, 0, 0.05));
 
-    type BtnSpec = { name: string; label: string; accent: vec4; onPress: () => void };
-    const groups: { tag: string; tagColor: vec4; buttons: BtnSpec[] }[] = [
-      {
-        tag: "COOK",
-        tagColor: COLOR_CYAN_PREP,
-        buttons: [
-          { name: "UI_Btn_StepChop", label: "Step Cut", accent: COLOR_CYAN_PREP, onPress: () => { if (this.controller) this.controller.onStepChopPressed(); } },
-          { name: "UI_Btn_Transfer", label: "Transfer", accent: COLOR_CYAN_PREP, onPress: () => { if (this.controller) this.controller.onTransferPressed(); } },
-          { name: "UI_Btn_InspectSear", label: "AI Vision", accent: COLOR_VIOLET_AI, onPress: () => { this.triggerRealAiVisionScan(); } },
-        ],
-      },
-      {
-        tag: "SIM",
-        tagColor: COLOR_AMBER_DRIFT,
-        buttons: [
-          { name: "UI_Btn_TriggerDrift", label: "+25s Drift", accent: COLOR_AMBER_DRIFT, onPress: () => { if (this.controller) this.controller.onSimulatePrepDrift(); } },
-          { name: "UI_Btn_TimeWarp", label: "10x Warp", accent: COLOR_EMERALD_DONE, onPress: () => { if (this.controller) this.controller.onToggleTimeWarpPressed(); } },
-          { name: "UI_Btn_Reset", label: "Reset", accent: COLOR_SILVER, onPress: () => { if (this.controller) this.controller.onResetPressed(); } },
-        ],
-      },
-    ];
-
     let x = -panelW / 2 + PAD_X;
     groups.forEach((group, gi) => {
-      this.createText(
+      // Mode chip: tinted fill + outline + accent label
+      this.createGlass(
         content,
-        `Director_Tag_${group.tag}`,
-        group.tag,
-        15,
-        800,
-        group.tagColor,
-        new vec3(x + TAG_W / 2, 0, 0),
-        TAG_W,
-        BTN_H
+        `Director_TagChip_${group.tag}`,
+        new vec3(x + TAG_W / 2, 0, -0.05),
+        new vec2(TAG_W, BTN_H),
+        scaleRgb(group.tagColor, gi === 0 ? 0.3 : 0.22, 0.92),
+        withAlpha(group.tagColor, 0.85),
+        0.05,
+        BTN_H / 2,
+        0.95
       );
-      x += TAG_W + TAG_GAP;
+      this.createText(content, `Director_Tag_${group.tag}`, group.tag, 26, 800, group.tagColor, new vec3(x + TAG_W / 2, 0, 0), TAG_W, BTN_H);
+      x += TAG_W + GROUP_GAP * 0.5;
       for (let i = 0; i < group.buttons.length; i++) {
         const spec = group.buttons[i];
-        const db = this.createDirectorButton(content, spec.name, spec.label, spec.accent, new vec3(x + BTN_W / 2, 0, 0), BTN_W, BTN_H, spec.onPress);
+        const db = this.createDirectorButton(content, spec.name, spec.label, spec.accent, new vec3(x + spec.w / 2, 0, 0), spec.w, BTN_H, spec.onPress);
         if (spec.name === "UI_Btn_TimeWarp") this.warpButton = db;
-        x += BTN_W + (i < group.buttons.length - 1 ? BTN_GAP : 0);
+        x += spec.w + (i < group.buttons.length - 1 ? BTN_GAP : 0);
       }
       if (gi === 0) {
         this.createGlass(
           content,
           "Director_Divider",
           new vec3(x + GROUP_GAP / 2, 0, 0),
-          new vec2(0.05, PANEL_H - 0.6),
+          new vec2(0.05, PANEL_H - 0.9),
           withAlpha(COLOR_SILVER, 0.6),
           withAlpha(COLOR_SILVER, 0.6),
           0.0,
@@ -693,19 +743,18 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     height: number,
     onPress: () => void
   ): DirectorButton {
-    // Neon frame behind the button (colour-coded edge + feedback surface)
+    // Outlined capsule behind the button (colour-coded hairline edge + feedback surface)
     const frame = this.createGlass(
       parent,
       `${name}_Frame`,
-      // Keep clear depth gaps (glass -0.1, frame 0.0, button +0.05 in dock
-      // space) so the neon frame never z-fights the glass or the button.
+      // Keep clear depth gaps (glass -0.1, frame -0.05, button 0 in content space)
       new vec3(pos.x, pos.y, -0.05),
-      new vec2(width + 0.12, height + 0.12),
-      scaleRgb(accent, 0.14, 0.9),
-      withAlpha(accent, 0.95),
-      0.075,
-      (height + 0.12) / 2,
-      0.92
+      new vec2(width, height),
+      scaleRgb(accent, 0.08, 0.92),
+      withAlpha(accent, 0.9),
+      0.05,
+      height / 2,
+      0.95
     );
 
     const obj = global.scene.createSceneObject(name);
@@ -717,8 +766,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
 
     const ec = obj.createComponent(ElementContent.getTypeName()) as ElementContent;
     ec.text = label;
-    ec.padding = { top: 0.12, right: 0.14, bottom: 0.12, left: 0.14 };
-    ec.textSize = 15;
+    ec.padding = { top: 0.1, right: 0.12, bottom: 0.1, left: 0.12 };
+    ec.textSize = 24;
     ec.sizeOverride = new vec2(width, height);
 
     const db: DirectorButton = {
@@ -748,17 +797,17 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private styleDirectorButton(db: DirectorButton): void {
     const f = db.frame;
     if (db.pressed) {
-      f.bg = scaleRgb(db.accent, 0.55, 0.95);
-      f.borderSize = 0.12;
+      f.bg = scaleRgb(db.accent, 0.5, 0.95);
+      f.borderSize = 0.09;
       f.border = withAlpha(COLOR_TEXT_HEADING, 1.0);
     } else if (db.hovered || db.latched) {
-      f.bg = scaleRgb(db.accent, 0.32, 0.92);
-      f.borderSize = 0.11;
+      f.bg = scaleRgb(db.accent, 0.3, 0.92);
+      f.borderSize = 0.08;
       f.border = withAlpha(db.accent, 1.0);
     } else {
-      f.bg = scaleRgb(db.accent, 0.14, 0.9);
-      f.borderSize = 0.075;
-      f.border = withAlpha(db.accent, 0.95);
+      f.bg = scaleRgb(db.accent, 0.08, 0.92);
+      f.borderSize = 0.05;
+      f.border = withAlpha(db.accent, 0.9);
     }
     applyGlass(f);
   }
@@ -972,7 +1021,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       if (p.key !== "") p.pulse = 1.0; // attention pop on state change
       p.key = v.key;
     }
-    this.setTextIfChanged(p.metricText, v.metric);
+    if (p.metricStr !== v.metric) this.setPillMetric(p, v.metric);
     this.setTextIfChanged(p.actionText, v.action);
     p.targetH = v.expanded ? PILL_H_EXPANDED : PILL_H_COLLAPSED;
 
@@ -992,24 +1041,41 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       }
     }
     p.metricColor = v.metricColor;
+    // label stays white unless the state recolours the whole metric; the value run + icon carry the accent
     p.metricText.textFill.color = v.metricColor;
+    p.valueText.textFill.color = v.accent;
+    if (p.iconImage && (accentChanged || force)) p.iconImage.mainMaterial.mainPass.baseColor = v.accent;
   }
 
   private layoutPill(p: Pill): void {
     const h = p.curH;
     p.glassObj.getTransform().setLocalPosition(new vec3(0, h / 2, 0));
     p.glass.rr.size = new vec2(PILL_W, h);
-    p.glass.rr.cornerRadius = Math.min(0.6, h / 2);
+    p.glass.rr.cornerRadius = Math.min(PILL_H_COLLAPSED / 2, h / 2);
+    p.glass.radius = p.glass.rr.cornerRadius;
 
     const t = Math.max(0, Math.min(1, (h - PILL_H_COLLAPSED) / (PILL_H_EXPANDED - PILL_H_COLLAPSED)));
-    p.metricText.getSceneObject().getTransform().setLocalPosition(new vec3(0, h - PILL_PAD - PILL_METRIC_H / 2, 0.03));
+    const my = h - PILL_PAD - PILL_METRIC_H / 2;
+    const moveY = (o: SceneObject): void => {
+      const tr = o.getTransform();
+      const lp = tr.getLocalPosition();
+      tr.setLocalPosition(new vec3(lp.x, my, lp.z));
+    };
+    moveY(p.metricText.getSceneObject());
+    moveY(p.valueText.getSceneObject());
+    if (p.iconImage) moveY(p.iconImage.getSceneObject());
     const actionObj = p.actionText.getSceneObject();
     actionObj.getTransform().setLocalPosition(new vec3(0, PILL_PAD + PILL_ACTION_H / 2, 0.03));
     const show = t > 0.35;
     if (actionObj.enabled !== show) actionObj.enabled = show;
     if (show) {
-      p.actionText.textFill.color = withAlpha(p.accent, (t - 0.35) / 0.65);
+      p.actionText.textFill.color = withAlpha(this.actionColor(p.accent), (t - 0.35) / 0.65);
     }
+  }
+
+  /** Second line: near-white with a hint of the state accent (reads as white like the render). */
+  private actionColor(accent: vec4): vec4 {
+    return new vec4(0.84 + 0.16 * accent.r, 0.84 + 0.16 * accent.g, 0.84 + 0.16 * accent.b, 1.0);
   }
 
   private animatePill(p: Pill | undefined, dt: number): void {
@@ -1020,7 +1086,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       if (Math.abs(p.targetH - p.curH) < 0.004) p.curH = p.targetH;
       this.layoutPill(p);
     } else if (p.actionText.getSceneObject().enabled) {
-      p.actionText.textFill.color = p.accent;
+      p.actionText.textFill.color = this.actionColor(p.accent);
     }
     if (p.pulse > 0) {
       p.pulse = Math.max(0, p.pulse - dt * 2.5);
@@ -1032,13 +1098,14 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private refreshChronometer(): void {
     if (!this.chronoText) return;
     if (this.isPlated) {
-      this.setTextIfChanged(this.chronoText, "READY TO PLATE");
+      this.setChrono("READY TO PLATE");
       this.chronoText.textFill.color = COLOR_EMERALD_DONE;
       return;
     }
     const shifted = this.plateAnchorTargetSec > 400;
-    this.setTextIfChanged(this.chronoText, `PLATE IN ${formatMMSS(this.plateAnchorDisplaySec)}`);
-    this.chronoText.textFill.color = shifted ? COLOR_VIOLET_AI : COLOR_TEXT_HEADING;
+    this.setChrono(`PLATE IN ${formatMMSS(this.plateAnchorDisplaySec)}`);
+    this.chronoText.textFill.color = COLOR_TEXT_HEADING;
+    if (this.chronoValue) this.chronoValue.textFill.color = shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE;
     if (this.chronoGlass) {
       const want = withAlpha(shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE, 0.95);
       if (!this.chronoGlass.border.equal(want)) {

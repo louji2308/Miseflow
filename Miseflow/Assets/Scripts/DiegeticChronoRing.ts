@@ -143,14 +143,15 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     skRoot.setParent(this.root);
     for (let i = 0; i < TICKS; i++) {
       const t = this.makeTick(skRoot, `SkilletTick_${i}`, this.quad, this.matOn);
-      this.placeRadial(t, SKILLET_XZ, SKILLET_R, i * (360 / TICKS), 1.1, 0.55);
+      // v5: thin tangential dashes -> a broken glowing arc instead of chunky radial blocks
+      this.placeRadial(t, SKILLET_XZ, SKILLET_R, i * (360 / TICKS), 0.17, 1.55);
       this.skilletTicks.push(t);
     }
     this.invariant = this.makeTick(skRoot, "Chrono_InvariantTick", this.quad);
-    this.placeRadial(this.invariant, SKILLET_XZ, SKILLET_R + 0.35, 0, 2.3, 1.0, RING_Y + 0.02);
+    this.placeRadial(this.invariant, SKILLET_XZ, SKILLET_R + 0.2, 0, 1.2, 0.24, RING_Y + 0.02);
 
     // Heat Guard ring (hidden until drift)
-    this.heatGuard = this.makeTick(skRoot, "Chrono_HeatGuard", buildAnnulusMesh(0.92, 1.0, 64));
+    this.heatGuard = this.makeTick(skRoot, "Chrono_HeatGuard", buildAnnulusMesh(0.975, 1.0, 96));
     const hg = this.heatGuard.obj.getTransform();
     hg.setLocalPosition(new vec3(SKILLET_XZ.x, RING_Y + 0.01, SKILLET_XZ.y));
     hg.setLocalScale(new vec3(SKILLET_R - 1.0, 1, SKILLET_R - 1.0));
@@ -161,7 +162,7 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     scRoot.setParent(this.root);
     for (let i = 0; i < TICKS; i++) {
       const t = this.makeTick(scRoot, `SaucierTick_${i}`, this.quad, this.matBase);
-      this.placeRadial(t, SAUCIER_XZ, SAUCIER_R, i * (360 / TICKS), 0.9, 0.45);
+      this.placeRadial(t, SAUCIER_XZ, SAUCIER_R, i * (360 / TICKS), 0.12, 1.05);
       this.saucierTicks.push(t);
     }
     for (let i = 0; i < 7; i++) {
@@ -239,10 +240,10 @@ export class DiegeticChronoRing extends BaseScriptComponent {
       tint(this.invariant.mat, s > 0.5 ? RED : GOLD, 1.0);
       const g = 1.0 + 0.25 * s;
       const tr = this.invariant.obj.getTransform();
-      tr.setLocalScale(new vec3(1.0 * g, 1, 2.3 * g));
+      tr.setLocalScale(new vec3(0.24 * g, 1, 1.2 * g));
     } else {
       tint(this.invariant.mat, GOLD, 0.9);
-      this.invariant.obj.getTransform().setLocalScale(new vec3(1.0, 1, 2.3));
+      this.invariant.obj.getTransform().setLocalScale(new vec3(0.24, 1, 1.2));
     }
   }
 
@@ -259,13 +260,13 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     for (let i = 0; i < 7; i++) {
       const off = (i - 3) * 15;
       const w = this.windowSegs[i];
-      this.placeRadial(w, SAUCIER_XZ, SAUCIER_R + 0.15, this.windowCenter + off, 1.7, 0.95, RING_Y + 0.02);
+      this.placeRadial(w, SAUCIER_XZ, SAUCIER_R + 0.05, this.windowCenter + off, 0.22, 1.4, RING_Y + 0.02);
       tint(w.mat, winColor, winK);
 
       const g = this.ghostSegs[i];
       g.obj.enabled = this.ghostShown;
       if (this.ghostShown) {
-        this.placeRadial(g, SAUCIER_XZ, SAUCIER_R + 0.15, this.ghostCenter + off, 1.5, 0.7, RING_Y + 0.01);
+        this.placeRadial(g, SAUCIER_XZ, SAUCIER_R + 0.05, this.ghostCenter + off, 0.14, 1.25, RING_Y + 0.01);
         tint(g.mat, GHOST, 0.45);
       }
     }

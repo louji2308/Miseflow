@@ -1,14 +1,15 @@
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { makeEmissiveMaterial } from "./StationPropsBuilder";
+import { RoundedRectangle } from "SpectaclesUIKit.lspkg/Scripts/Visuals/RoundedRectangle/RoundedRectangle";
 
 // ─── StationsRoot-local layout (mirrors StationPropsBuilder.ts constants) ───
 const LINE_Y = -0.03; // just above the slab top (-0.23)
 // Prep -> Sauce conduit geometry (cm). Wide enough to read from the director camera ~70 cm away.
-const BASE_W = 0.95;
-const DASH_W = 1.35;
+const BASE_W = 0.12; // v5: hairline light strips
+const DASH_W = 0.3;
 const DASH_COUNT = 9;
-const LOCK_R = 1.7;
+const LOCK_R = 0.9;
 const SKILLET_XZ = new vec2(-11.2, -1.5);
 const SAUCIER_XZ = new vec2(0.0, -10.5);
 const BOARD_XZ = new vec2(10.5, -3.0);
@@ -147,6 +148,81 @@ export function createWorldLabel(
   return { root, text: txt };
 }
 
+const IMAGE_MAT = requireAsset("../Materials/ImageMaterial.mat") as Material;
+const ICON_LOCK = requireAsset("../Icons/lock.png") as Texture;
+
+/** World-space icon (Component.Image, unit quad scaled to `size` cm). Needs a Canvas ancestor. */
+export function createWorldIcon(parent: SceneObject, name: string, tex: Texture, size: number, pos: vec3, tintColor: vec4): Image {
+  const o = global.scene.createSceneObject(name);
+  o.setParent(parent);
+  o.getTransform().setLocalPosition(pos);
+  o.getTransform().setLocalScale(new vec3(size, size, 1));
+  const img = o.createComponent("Component.Image") as Image;
+  const m = IMAGE_MAT.clone();
+  m.mainPass.baseTex = tex;
+  m.mainPass.baseColor = tintColor;
+  m.mainPass.depthTest = true;
+  m.mainPass.depthWrite = false;
+  img.clearMaterials();
+  img.addMaterial(m);
+  return img;
+}
+
+/** "SEAR 01:00" -> ["SEAR", "01:00"]; the value starts at the first token containing a digit. */
+export function splitMetric(s: string): [string, string] {
+  const tokens = s.split(" ");
+  let idx = -1;
+  for (let i = 0; i < tokens.length; i++) {
+    if (/[0-9]/.test(tokens[i])) {
+      idx = i;
+      break;
+    }
+  }
+  if (idx < 0) return [s, ""];
+  return [tokens.slice(0, idx).join(" "), tokens.slice(idx).join(" ")];
+}
+
+/**
+ * Lays out a two-colour "LABEL value" line centred on `centerX`: the label is right-aligned to a
+ * pivot and the value left-aligned after it, so the two runs never overlap even when the
+ * glyph-width estimate is off (only the centring is approximate).
+ */
+export function layoutSplitText(
+  label: Text,
+  value: Text,
+  l: string,
+  v: string,
+  size: number,
+  centerX: number,
+  y: number,
+  z: number,
+  maxW: number = 1000
+): number {
+  let cw = (size / 43.886) * 0.64;
+  const est = (l.length + v.length * 0.95 + (l.length > 0 && v.length > 0 ? 0.75 : 0)) * cw;
+  // shrink long runs (e.g. "CRUST OPTIMAL 0.94") so they stay inside their capsule
+  const k = est > maxW ? maxW / est : 1;
+  label.size = Math.round(size * k);
+  value.size = Math.round(size * k);
+  cw *= k;
+  const gap = l.length > 0 && v.length > 0 ? cw * 0.75 : 0;
+  const wl = l.length * cw;
+  const wv = v.length * cw * 0.95;
+  const start = centerX - (wl + gap + wv) / 2;
+  const pivot = start + wl;
+  if (label.text !== l) label.text = l;
+  if (value.text !== v) value.text = v;
+  label.horizontalAlignment = HorizontalAlignment.Right;
+  label.horizontalOverflow = HorizontalOverflow.Overflow;
+  label.layoutRect = Rect.create(-20, 0, -1, 1);
+  label.getSceneObject().getTransform().setLocalPosition(new vec3(pivot, y, z));
+  value.horizontalAlignment = HorizontalAlignment.Left;
+  value.horizontalOverflow = HorizontalOverflow.Overflow;
+  value.layoutRect = Rect.create(0, 20, -1, 1);
+  value.getSceneObject().getTransform().setLocalPosition(new vec3(pivot + gap, y, z));
+  return wl + gap + wv;
+}
+
 /**
  * DAGCounterConduit.ts
  * Flush countertop "light strips" that make the DAG causality visible:
@@ -174,6 +250,11 @@ export class DAGCounterConduit extends BaseScriptComponent {
   private lockNode!: Seg;
   private lockText?: SceneObject;
   private lockLabelText?: Text;
+  private lockGlass?: RoundedRectangle;
+  private lockShapes: RoundedRectangle[] = [];
+  private lockIcon?: Image;
+  private lockStyleKey: string = "";
+  private lockWarm: number = 0;
   private state: ConduitState = "LOCKED";
   private driftT: number = 0; // seconds of amber flash remaining
   private shockT: number = -1; // 0..1 shock travel, -1 inactive
@@ -268,7 +349,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
     this.root.setParent(parent);
 
     this.quadMesh = buildUnitQuadMesh();
-    this.ringMesh = buildAnnulusMesh(0.62, 1.0, 40);
+    this.ringMesh = buildAnnulusMesh(0.86, 1.0, 64);
 
     // ── Conduit_PrepToSauce: board edge -> saucier ring (R ~ 6.3)
     const prepRoot = global.scene.createSceneObject("Conduit_PrepToSauce");
@@ -328,7 +409,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
       const len = Math.max(0.5, endD - startD);
       const yaw = Math.atan2(vx, vz);
       const base = this.makeSeg(convRoot, `Conduit_Convergence_${s.name}`, this.quadMesh);
-      this.placeAlong(base, a, yaw, 0, len, 0.5);
+      this.placeAlong(base, a, yaw, 0, len, 0.1);
       const dashes: Seg[] = [];
       for (let i = 0; i < 3; i++) {
         dashes.push(this.makeSeg(convRoot, `Conduit_Convergence_${s.name}_Dash_${i}`, this.quadMesh));
@@ -339,26 +420,82 @@ export class DAGCounterConduit extends BaseScriptComponent {
 
   private buildLockText(parent: SceneObject): void {
     try {
-      // Text needs a Canvas ancestor to render in world space (the old bare Text was invisible).
-      const label = createWorldLabel(
-        parent,
-        "Conduit_LockLabel",
-        "[LOCKED]",
-        40,
-        new vec4(LOCK_RED[0], LOCK_RED[1], LOCK_RED[2], 1.0),
-        4.6,
-        1.1
-      );
-      // Floats just above the lock node (left of the prep pill, right of the saucier handle).
-      const pos = new vec3(this.pTo.x + 0.5, 2.6, this.pTo.y - 0.6);
-      const t = label.root.getTransform();
-      t.setLocalPosition(pos);
-      t.setLocalRotation(faceDirectorCamera(pos));
-      this.lockText = label.root;
-      this.lockLabelText = label.text;
+      // v5: small orange lock capsule (dark glass + hairline outline + lock icon) floating above the
+      // board's knife, joined to the board by a thin leader line ending in a dot.
+      const pos = new vec3(4.9, 4.3, -3.9);
+      const root = global.scene.createSceneObject("Conduit_LockLabel");
+      root.setParent(parent);
+      root.createComponent("Component.Canvas");
+      root.getTransform().setLocalPosition(pos);
+      root.getTransform().setLocalRotation(faceDirectorCamera(pos));
+      const orange = new vec4(LOCK_RED[0], LOCK_RED[1], LOCK_RED[2], 1.0);
+
+      const leaderLen = pos.y - 1.32; // down to the board top
+      const leader = global.scene.createSceneObject("Conduit_LockLeader");
+      leader.setParent(root);
+      leader.getTransform().setLocalPosition(new vec3(0, -leaderLen / 2 - 0.55, -0.02));
+      const lrr = leader.createComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
+      lrr.size = new vec2(0.045, leaderLen - 1.1);
+      const dot = global.scene.createSceneObject("Conduit_LockLeaderDot");
+      dot.setParent(root);
+      dot.getTransform().setLocalPosition(new vec3(0, -leaderLen + 0.12, -0.02));
+      const drr = dot.createComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
+      drr.size = new vec2(0.3, 0.3);
+
+      const bg = global.scene.createSceneObject("Conduit_LockGlass");
+      bg.setParent(root);
+      const rr = bg.createComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
+      rr.size = new vec2(5.6, 1.15);
+      this.lockGlass = rr;
+      this.lockShapes = [lrr, drr];
+
+      const icon = createWorldIcon(root, "Conduit_LockIcon", ICON_LOCK, 0.7, new vec3(-2.1, 0, 0.03), orange);
+      this.lockIcon = icon;
+      const label = global.scene.createSceneObject("Conduit_LockLabel_Text");
+      label.setParent(root);
+      label.getTransform().setLocalPosition(new vec3(0.35, 0, 0.03));
+      const txt = label.createComponent("Component.Text") as Text;
+      txt.text = "[LOCKED]";
+      txt.size = 34;
+      (txt as Text & { weight?: number }).weight = 700;
+      txt.textFill.mode = TextFillMode.Solid;
+      txt.textFill.color = orange;
+      txt.horizontalAlignment = HorizontalAlignment.Center;
+      txt.verticalAlignment = VerticalAlignment.Center;
+      txt.horizontalOverflow = HorizontalOverflow.Overflow;
+      txt.verticalOverflow = VerticalOverflow.Overflow;
+      txt.depthTest = true;
+      txt.layoutRect = Rect.create(-2.2, 2.2, -0.5, 0.5);
+      this.lockText = root;
+      this.lockLabelText = txt;
+      this.styleLock(LOCK_RED);
     } catch (e) {
       this.lockText = undefined;
     }
+  }
+
+  private styleLock(c: [number, number, number]): void {
+    const col = new vec4(c[0], c[1], c[2], 1.0);
+    if (this.lockGlass) {
+      const rr = this.lockGlass;
+      rr.gradient = false;
+      rr.backgroundColor = new vec4(0.05, 0.04, 0.035, 0.9);
+      rr.border = true;
+      rr.borderColor = col;
+      rr.borderSize = 0.06;
+      rr.cornerRadius = 0.55;
+      const wide = !!this.lockLabelText && this.lockLabelText.text.length > 8;
+      rr.size = new vec2(wide ? 7.6 : 5.6, 1.15);
+      if (this.lockIcon) this.lockIcon.getSceneObject().getTransform().setLocalPosition(new vec3(wide ? -3.1 : -2.1, 0, 0.03));
+      if (this.lockLabelText) this.lockLabelText.getSceneObject().getTransform().setLocalPosition(new vec3(0.4, 0, 0.03));
+    }
+    for (const sh of this.lockShapes) {
+      sh.gradient = false;
+      sh.backgroundColor = col;
+      sh.border = false;
+      sh.cornerRadius = Math.min(sh.size.x, sh.size.y) / 2;
+    }
+    if (this.lockIcon) this.lockIcon.mainMaterial.mainPass.baseColor = col;
   }
 
   /** Test/introspection hook: "LOCKED" | "DRIFT" | "DONE". */
@@ -474,7 +611,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
       const s = this.shockT * (this.pLen + slen) - slen;
       const from = Math.max(0, s);
       const to = Math.min(this.pLen, s + slen);
-      this.placeOnPath(this.pShock, from, Math.max(0.01, to - from), 1.6 + 0.8 * this.shockT, LINE_Y + 0.04);
+      this.placeOnPath(this.pShock, from, Math.max(0.01, to - from), 0.6 + 0.4 * this.shockT, LINE_Y + 0.04);
       tint(this.pShock.mat, AMBER, 1.0);
     }
 
@@ -487,11 +624,18 @@ export class DAGCounterConduit extends BaseScriptComponent {
       if (this.lockLabelText.text !== want) this.lockLabelText.text = want;
       const c = this.state === "DRIFT" ? AMBER : LOCK_RED;
       this.lockLabelText.textFill.color = new vec4(c[0], c[1], c[2], 1.0);
+      // UIKit shapes initialise on OnStart: re-assert the capsule style for a few frames + on change
+      const key = want;
+      if (key !== this.lockStyleKey || this.lockWarm < 8) {
+        this.lockStyleKey = key;
+        this.lockWarm++;
+        this.styleLock(c);
+      }
     }
     if (locked) {
       const nodeColor = this.state === "DRIFT" ? AMBER : LOCK_RED;
       tint(this.lockNode.mat, nodeColor, 0.6 + 0.4 * pulse);
-      const sc = LOCK_R + 0.25 * pulse;
+      const sc = LOCK_R + 0.12 * pulse;
       this.lockNode.obj.getTransform().setLocalScale(new vec3(sc, 1, sc));
     }
   }
@@ -521,7 +665,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
         const d = line.dashes[i];
         const s = (time * speed + i * spacing) % line.len;
         const len = Math.min(0.9, line.len - s);
-        this.placeAlong(d, line.a, line.yaw, s, len, 0.85, LINE_Y + 0.02);
+        this.placeAlong(d, line.a, line.yaw, s, len, 0.24, LINE_Y + 0.02);
         tint(d.mat, color, Math.min(1.0, k + 0.2));
       }
     }
