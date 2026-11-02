@@ -22,8 +22,15 @@ export interface RapidRouterConfig {
  */
 @component
 export class RapidRouterVisionService extends BaseScriptComponent {
+  /**
+   * Off by default so recordings are deterministic: the AI Vision button then runs the local
+   * VisionScanStandIn through ProposalGate. Turn on to send the probe to RapidRouter.
+   */
+  @input
+  useLiveRapidRouter: boolean = false;
+
   private config: RapidRouterConfig = {
-    apiKey: "sk-rr-v1-VbjRMTnHNynMxKGqUuVa0rRT4Uiu17rm",
+    apiKey: "", // set at runtime via setApiKey(); never commit a key
     model: "qwen/qwen3.7-flash-2026-07-15",
     endpointUrl: "https://rapidrouter.ai/api/v1/chat/completions",
     timeoutMs: 8000,
@@ -59,7 +66,8 @@ export class RapidRouterVisionService extends BaseScriptComponent {
   private initListeners(): void {
     // Triggered when user taps 'AI Vision' on the Director Palette or via voice / gaze
     this.eventBus.on("TRIGGER_AI_VISION_PROBE", () => {
-      this.analyzeSearStage("GOLDEN");
+      // When live mode is off, MiseFlowSpatialUI routes the probe to the local stand-in.
+      if (this.useLiveRapidRouter) this.analyzeSearStage("GOLDEN");
     });
   }
 
@@ -93,7 +101,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
     try {
       let proposal: AIProposal;
 
-      if (this.config.apiKey && this.internetModule) {
+      if (this.useLiveRapidRouter && this.config.apiKey && this.internetModule) {
         proposal = await this.callRapidRouterApi(stage, base64Frame);
       } else {
         // High-fidelity calibrated fallback matching verified stage profiles

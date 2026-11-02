@@ -28,7 +28,7 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
-    {}
+    useLiveRapidRouter: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -38,10 +38,9 @@
   Attachments:
     []
   DefaultScriptInputs:
-    -
-      {}
+    - useLiveRapidRouter: false
   ScriptTypes:
     -
       {}
   InputLines:
-    []
+    - // @input bool useLiveRapidRouter

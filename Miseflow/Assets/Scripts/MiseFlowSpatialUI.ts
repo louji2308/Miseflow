@@ -1,153 +1,97 @@
-import { BackPlate } from "SpectaclesUIKit.lspkg/Scripts/BackPlate";
 import { Button } from "SpectaclesUIKit.lspkg/Scripts/Components/Button/Button";
 import { ElementContent } from "SpectaclesUIKit.lspkg/Scripts/Components/Content/ElementContent";
-import { FlexItem } from "SpectaclesUIKit.lspkg/Scripts/Components/Layout2D/Flex/FlexItem";
-import { FlexLayout } from "SpectaclesUIKit.lspkg/Scripts/Components/Layout2D/Flex/FlexLayout";
-import {
-  FlexAlign,
-  FlexDirection,
-  FlexJustify,
-} from "SpectaclesUIKit.lspkg/Scripts/Components/Layout2D/Flex/FlexTypes";
 import { RoundedRectangle } from "SpectaclesUIKit.lspkg/Scripts/Visuals/RoundedRectangle/RoundedRectangle";
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MetricPrepBlueprint } from "./MetricPrepBlueprint";
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
 import { StationInteractableController } from "./StationInteractableController";
 import { RapidRouterVisionService } from "./AI/RapidRouterVisionService";
-
-const BASE_PBR_TEMPLATE = requireAsset("../Materials/Mat_DarkSlate.mat") as Material;
-
-function createBuilder(): MeshBuilder {
-  const builder = new MeshBuilder([
-    { name: "position", components: 3 },
-    { name: "normal", components: 3, normalized: true },
-    { name: "texture0", components: 2 },
-    { name: "color", components: 4 },
-  ]);
-  builder.topology = MeshTopology.Triangles;
-  builder.indexType = MeshIndexType.UInt16;
-  return builder;
-}
-
-function addBox(
-  builder: MeshBuilder,
-  indices: number[],
-  cx: number,
-  cy: number,
-  cz: number,
-  hw: number,
-  hh: number,
-  hd: number,
-  color: [number, number, number, number],
-  baseIdx: number
-): number {
-  const x0 = cx - hw;
-  const x1 = cx + hw;
-  const y0 = cy - hh;
-  const y1 = cy + hh;
-  const z0 = cz - hd;
-  const z1 = cz + hd;
-
-  const verts: number[] = [];
-  let vi = baseIdx;
-
-  const face = (
-    p0: [number, number, number],
-    p1: [number, number, number],
-    p2: [number, number, number],
-    p3: [number, number, number],
-    n: [number, number, number]
-  ) => {
-    verts.push(
-      p0[0], p0[1], p0[2], n[0], n[1], n[2], 0, 0, color[0], color[1], color[2], color[3],
-      p1[0], p1[1], p1[2], n[0], n[1], n[2], 1, 0, color[0], color[1], color[2], color[3],
-      p2[0], p2[1], p2[2], n[0], n[1], n[2], 1, 1, color[0], color[1], color[2], color[3],
-      p3[0], p3[1], p3[2], n[0], n[1], n[2], 0, 1, color[0], color[1], color[2], color[3]
-    );
-    indices.push(vi, vi + 1, vi + 2, vi, vi + 2, vi + 3);
-    vi += 4;
-  };
-
-  face([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1]);
-  face([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1]);
-  face([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0]);
-  face([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0]);
-  face([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0]);
-  face([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0]);
-
-  builder.appendVerticesInterleaved(verts);
-  return vi;
-}
-
-function makeGlassBackingMaterial(
-  r: number,
-  g: number,
-  b: number,
-  alpha: number = 0.86
-): Material {
-  const m = BASE_PBR_TEMPLATE.clone();
-  m.mainPass.blendMode = BlendMode.Normal;
-  m.mainPass.depthWrite = true;
-  m.mainPass.depthTest = true;
-  m.mainPass.baseColor = new vec4(r, g, b, alpha);
-  (m.mainPass as any).metallic = 0.04;
-  (m.mainPass as any).roughness = 0.18;
-  return m;
-}
+import { VisionScanStandIn } from "./AI/VisionScanStandIn";
+import { GazeEdgeBeacon } from "./GazeEdgeBeacon";
+import { DAGCounterConduit } from "./DAGCounterConduit";
+import { DiegeticChronoRing } from "./DiegeticChronoRing";
+import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
 
 // ============================================================================
-// MiseFlow Dark Smoked Glass Spatial Theme & Calibrated Opacity System
+// MiseFlow v4 "Diegetic Cockpit" — progressive-disclosure spatial UI
+// ----------------------------------------------------------------------------
+// * Each station gets a compact 2-line pill pinned just above its own cookware
+//   (line 1 = large timer/metric, line 2 = bold <=4-word action). Idle stations
+//   collapse to a 1-line pill; the alerted/active station expands, pops, and
+//   recedes again once the moment has passed.
+// * Master chronometer is a small single-line pill high above the saucier.
+// * Director HUD is a compact two-group dock (COOK | SIM) with colour-coded
+//   neon frames and hover/press feedback, lifted fully inside the frame.
+// * Additive-display contrast: light text on dark glass with a strong luminous
+//   edge (dark = transparent on Specs, so the edge + text carry the read).
+// NOTE: LEAF asserts on the controller-owned Text3D labels (PrepStatusLabel,
+// SkilletStatusLabel, SaucepotStatusLabel) and Btn_* triggers; this script only
+// hides their legacy visuals and never rewrites their text.
 // ============================================================================
-// High-contrast luminous text against dark obsidian glass background
-const COLOR_TEXT_HEADING = new vec4(0.96, 0.98, 1.00, 1.00);   // Diamond Ice White (#F8FAFC)
-const COLOR_TEXT_BODY = new vec4(0.82, 0.86, 0.92, 0.95);      // Refined Pearl Silver (#D1D5DB)
-const COLOR_TEXT_MUTED = new vec4(0.62, 0.70, 0.80, 0.90);     // Cool Slate Silver (#94A3B8)
 
-// Accent Badge Colors (Luminous cyber-culinary jewel tones for AR displays)
-const COLOR_GOLD_HEAT = new vec4(1.00, 0.76, 0.28, 1.00);      // Radiant Searing Gold (#FBBF24)
-const COLOR_CYAN_PREP = new vec4(0.22, 0.86, 0.98, 1.00);      // Luminous Ocean Cyan (#38BDF8)
-const COLOR_VIOLET_WAITING = new vec4(0.76, 0.54, 1.00, 1.00); // Radiant Lavender Violet (#C084FC)
-const COLOR_CORAL_ALERT = new vec4(1.00, 0.40, 0.36, 1.00);    // Vibrant Alert Coral (#F87171)
-const COLOR_EMERALD_DONE = new vec4(0.24, 0.95, 0.62, 1.00);   // Radiant Plating Emerald (#34D399)
+// Palette (luminous jewel tones for an additive display)
+const COLOR_TEXT_HEADING = new vec4(0.97, 0.98, 1.0, 1.0);
+const COLOR_TEXT_MUTED = new vec4(0.7, 0.78, 0.88, 0.95);
+const COLOR_GOLD_HEAT = new vec4(1.0, 0.76, 0.28, 1.0);
+const COLOR_AMBER_DRIFT = new vec4(1.0, 0.62, 0.16, 1.0);
+const COLOR_CYAN_PREP = new vec4(0.22, 0.86, 0.98, 1.0);
+const COLOR_VIOLET_AI = new vec4(0.76, 0.54, 1.0, 1.0);
+const COLOR_CORAL_ALERT = new vec4(1.0, 0.42, 0.38, 1.0);
+const COLOR_EMERALD_DONE = new vec4(0.24, 0.95, 0.62, 1.0);
+const COLOR_SILVER = new vec4(0.78, 0.84, 0.92, 1.0);
+const COLOR_GLASS = new vec4(0.04, 0.06, 0.1, 1.0);
 
-type TextRole =
-  | "Title"
-  | "HeadlineXL"
-  | "Headline1"
-  | "Headline2"
-  | "Subheadline"
-  | "Body"
-  | "Explanation"
-  | "Button"
-  | "Caption";
+// Camera pose that frames the counter, expressed in StationsRoot-local space
+// (world camera (0,25.1,-21.4) minus StationsRoot (0,-17.5,-76)). Used to make
+// every panel face the viewer.
+const CAM_LOCAL = new vec3(0, 42.6, 54.6);
 
-const TYPE_SCALE: Record<TextRole, { size: number; weight: number }> = {
-  Title: { size: 68, weight: 700 },
-  HeadlineXL: { size: 52, weight: 700 },
-  Headline1: { size: 42, weight: 700 },
-  Headline2: { size: 36, weight: 700 },
-  Subheadline: { size: 30, weight: 600 },
-  Body: { size: 26, weight: 500 },
-  Explanation: { size: 23, weight: 400 },
-  Button: { size: 17, weight: 600 },
-  Caption: { size: 22, weight: 700 },
-};
+// Pill geometry (cm)
+const PILL_W = 9.2;
+const PILL_PAD = 0.28;
+const PILL_METRIC_H = 1.12;
+const PILL_ACTION_H = 0.88;
+const PILL_GAP = 0.06;
+const PILL_H_COLLAPSED = PILL_PAD * 2 + PILL_METRIC_H;
+const PILL_H_EXPANDED = PILL_PAD * 2 + PILL_METRIC_H + PILL_GAP + PILL_ACTION_H;
+const PILL_METRIC_SIZE = 42;
+const PILL_ACTION_SIZE = 30;
 
-function applyTextStyle(
-  text: Text,
-  role: TextRole,
-  color: vec4 = COLOR_TEXT_HEADING,
-  hAlign: HorizontalAlignment = HorizontalAlignment.Center
-): void {
-  text.size = TYPE_SCALE[role].size * 0.95;
-  (text as Text & { weight?: number }).weight = TYPE_SCALE[role].weight;
-  text.textFill.mode = TextFillMode.Solid;
-  text.textFill.color = color;
-  text.horizontalAlignment = hAlign;
-  text.verticalAlignment = VerticalAlignment.Center;
-  text.horizontalOverflow = HorizontalOverflow.Wrap;
-  text.verticalOverflow = VerticalOverflow.Overflow;
-  text.depthTest = true;
+// Pill anchors = bottom-centre of each pill, StationsRoot-local. Stations:
+// skillet (-11.2,-0.22,-1.5), saucier (0,-0.22,-10.5), board (10.5,0.64,-3.0).
+const SKILLET_PILL_ANCHOR = new vec3(-11.2, 6.0, -4.0);
+const SKILLET_STEM_FOOT_Y = 1.6;
+const SAUCE_PILL_ANCHOR = new vec3(0.0, 8.6, -12.0);
+const SAUCE_STEM_FOOT_Y = 4.9;
+const PREP_PILL_ANCHOR = new vec3(12.0, 5.6, -6.5);
+const PREP_STEM_FOOT_Y = 1.6;
+const CHRONO_CENTER = new vec3(0.0, 19.5, -16.0);
+const DIRECTOR_CENTER = new vec3(0.0, -0.6, 13.0);
+
+// How long transient expansions stay open before receding (seconds)
+const EXPAND_PULSE_SEC = 5.0;
+// How long a vision gate verdict holds the Skillet pill (seconds)
+const VISION_VERDICT_SEC = 6.0;
+
+function faceCamera(pos: vec3): quat {
+  const d = CAM_LOCAL.sub(pos);
+  const yaw = Math.atan2(d.x, d.z);
+  const horiz = Math.sqrt(d.x * d.x + d.z * d.z);
+  const pitch = -Math.atan2(d.y, horiz);
+  return quat.angleAxis(yaw, vec3.up()).multiply(quat.angleAxis(pitch, vec3.right()));
+}
+
+function yawToCamera(pos: vec3): quat {
+  const d = CAM_LOCAL.sub(pos);
+  return quat.angleAxis(Math.atan2(d.x, d.z), vec3.up());
+}
+
+function withAlpha(c: vec4, a: number): vec4 {
+  return new vec4(c.r, c.g, c.b, a);
+}
+
+function scaleRgb(c: vec4, k: number, a: number): vec4 {
+  return new vec4(c.r * k, c.g * k, c.b * k, a);
 }
 
 function findByName(parent: SceneObject, name: string): SceneObject | null {
@@ -160,11 +104,7 @@ function findByName(parent: SceneObject, name: string): SceneObject | null {
   return null;
 }
 
-function findAllByName(
-  parent: SceneObject,
-  name: string,
-  out: SceneObject[] = []
-): SceneObject[] {
+function findAllByName(parent: SceneObject, name: string, out: SceneObject[] = []): SceneObject[] {
   if (parent.name === name) out.push(parent);
   const count = parent.getChildrenCount();
   for (let i = 0; i < count; i++) {
@@ -177,30 +117,66 @@ function formatMMSS(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
   const mins = Math.floor(s / 60);
   const rem = s % 60;
-  const mStr = mins < 10 ? "0" + mins : "" + mins;
-  const sStr = rem < 10 ? "0" + rem : "" + rem;
-  return `${mStr}:${sStr}`;
+  return `${mins < 10 ? "0" + mins : "" + mins}:${rem < 10 ? "0" + rem : "" + rem}`;
 }
 
-interface CardStyleConfig {
-  cardObj: SceneObject;
-  width: number;
-  height: number;
-  alpha: number;
-  cornerRadius: number;
+interface GlassStyle {
+  rr: RoundedRectangle;
+  bg: vec4;
+  border: vec4;
   borderSize: number;
-  borderColor: vec4;
-  backgroundColor: vec4;
+  radius: number;
+  opacity: number;
 }
 
-/**
- * MiseFlowSpatialUI.ts — Grandmaster Edition
- * 1. Calibrated Practical Opaqueness: 88% opacity light porcelain glass panels (never washed out, never 100% solid slab).
- * 2. Guaranteed Zero Overlap: Master Plating Convergence Target elevated to Tier 3 Apex Canopy (0, 16.5, -15.5), providing > 15.5 cm vertical clearance and absolute zero overlap with any vessel or circular ring!
- * 3. Elevated Station Cards with 6.0cm vertical clearance and 7.5-8.5cm depth buffer.
- * 4. Rich, articulate culinary explanations on every card.
- * 5. Active RapidRouter AI Vision feedback & live schedule adjustment.
- */
+function applyGlass(s: GlassStyle): void {
+  if (!s.rr || isNull(s.rr)) return;
+  s.rr.gradient = false;
+  s.rr.backgroundColor = s.bg;
+  s.rr.border = true;
+  s.rr.borderColor = s.border;
+  s.rr.borderSize = s.borderSize;
+  s.rr.cornerRadius = s.radius;
+  s.rr.opacity = s.opacity;
+}
+
+interface StationView {
+  metric: string;
+  action: string;
+  accent: vec4;
+  metricColor: vec4;
+  expanded: boolean;
+  key: string; // state identity; a change triggers the attention pop
+}
+
+interface Pill {
+  root: SceneObject;
+  glassObj: SceneObject;
+  glass: GlassStyle;
+  metricText: Text;
+  actionText: Text;
+  stem: GlassStyle | null;
+  stemObj: SceneObject | null;
+  foot: GlassStyle | null;
+  curH: number;
+  targetH: number;
+  pulse: number;
+  key: string;
+  accent: vec4;
+  metricColor: vec4;
+}
+
+interface DirectorButton {
+  obj: SceneObject;
+  frameObj: SceneObject;
+  frame: GlassStyle;
+  accent: vec4;
+  hovered: boolean;
+  pressed: boolean;
+  latched: boolean;
+  scale: number;
+}
+
 @component
 export class MiseFlowSpatialUI extends BaseScriptComponent {
   private controller?: StationInteractableController;
@@ -209,116 +185,65 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private visionService?: RapidRouterVisionService;
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
 
-  private cardConfigs: CardStyleConfig[] = [];
+  private glassStyles: GlassStyle[] = [];
   private startFrameWarmup: number = 0;
+  private clock: number = 0;
 
-  // Skillet Card Text Refs
-  private skilletBadgeText?: Text;
-  private skilletTimerText?: Text;
-  private skilletActionText?: Text;
-  private skilletExplanationText?: Text;
+  private skilletPill?: Pill;
+  private saucePill?: Pill;
+  private prepPill?: Pill;
+  private chronoGlass?: GlassStyle;
+  private chronoText?: Text;
+  private directorButtons: DirectorButton[] = [];
+  private warpButton?: DirectorButton;
 
-  // Saucepot Card Text Refs
-  private sauceBadgeText?: Text;
-  private sauceTimerText?: Text;
-  private sauceActionText?: Text;
-  private sauceExplanationText?: Text;
-
-  // Prep Board Card Text Refs
-  private prepBadgeText?: Text;
-  private prepProgressText?: Text;
-  private prepActionText?: Text;
-  private prepExplanationText?: Text;
-
-  // Plate Anchor Refs
-  private plateAnchorTimeText?: Text;
-  private plateAnchorSubText?: Text;
-
-  // State Management
+  // State
   private isDriftActive: boolean = false;
+  private isHeld: boolean = false;
   private isPrepTransferred: boolean = false;
   private isPlated: boolean = false;
+  private isTimeWarp: boolean = false;
   private autoApplyCountdown: number = -1.0;
   private plateAnchorTargetSec: number = 400; // 06:40
   private plateAnchorDisplaySec: number = 400;
+  private holdExpandUntil: number = -1;
+  private transferExpandUntil: number = -1;
+  private aiExpandUntil: number = -1;
 
-  // AI Scanner Visual State
+  // AI scanner state
   private isAiScanning: boolean = false;
   private aiScanTimer: number = 0.0;
   private aiLatestMessage: string = "";
+
+  // Deterministic vision stand-in verdict shown on the Skillet pill
+  private visionStandIn?: VisionScanStandIn;
+  private visionMetric: string = "";
+  private visionAction: string = "";
+  private visionAccent: vec4 = COLOR_VIOLET_AI;
+  private visionKey: string = "";
+  private visionUntil: number = -1;
 
   onAwake(): void {
     const root = this.getSceneObject();
     if (!root.getComponent(RapidRouterVisionService.getTypeName())) {
       root.createComponent(RapidRouterVisionService.getTypeName());
     }
+    this.ensureHeroComponents(root);
 
     this.buildSpatialInterface();
 
     this.createEvent("OnStartEvent").bind(() => {
       this.resolveControllers();
       this.suppressLegacyVisuals();
-      this.applyAllCardStyles();
+      this.applyAllGlass();
       this.bindEventListeners();
       this.bindKeyboardShortcuts();
-      this.refreshAllCards();
+      this.refreshAll(true);
     });
 
     this.createEvent("UpdateEvent").bind(() => {
       this.onUpdate();
     });
-  }
-
-  private trackCardForStyling(
-    cardObj: SceneObject,
-    width: number,
-    height: number,
-    alpha: number = 0.88,
-    cornerRadius: number = 0.9,
-    borderSize: number = 0.12,
-    borderColor: vec4 = new vec4(0.82, 0.88, 0.96, 0.75),
-    backgroundColor: vec4 = new vec4(0.96, 0.97, 0.99, 1.0)
-  ): void {
-    this.cardConfigs.push({
-      cardObj,
-      width,
-      height,
-      alpha,
-      cornerRadius,
-      borderSize,
-      borderColor,
-      backgroundColor,
-    });
-  }
-
-  private applyAllCardStyles(): void {
-    for (const cfg of this.cardConfigs) {
-      this.applyCardStyle(cfg);
-    }
-  }
-
-  private applyCardStyle(cfg: CardStyleConfig): void {
-    if (!cfg.cardObj || isNull(cfg.cardObj)) return;
-    const rr = cfg.cardObj.getComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
-    if (rr) {
-      rr.gradient = false;
-      rr.backgroundColor = cfg.backgroundColor;
-      rr.opacity = cfg.alpha;
-      rr.border = true;
-      rr.borderColor = cfg.borderColor;
-      rr.borderSize = cfg.borderSize;
-      rr.cornerRadius = cfg.cornerRadius;
-    }
-    const rmv = cfg.cardObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
-    if (rmv && rmv.mainPass) {
-      rmv.mainPass.opacityFactor = cfg.alpha;
-      rmv.mainPass.backgroundColor = cfg.backgroundColor;
-      try {
-        (rmv.mainPass as any).border = 1;
-        (rmv.mainPass as any).borderColor = cfg.borderColor;
-        (rmv.mainPass as any).borderSize = cfg.borderSize;
-      } catch (_e) {}
-    }
   }
 
   private resolveControllers(): void {
@@ -327,17 +252,41 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       StationInteractableController.getTypeName()
     ) as StationInteractableController;
     this.dag = root.getComponent(ChoreographyDAG.getTypeName()) as ChoreographyDAG;
-    this.prepBlueprint = root.getComponent(
-      MetricPrepBlueprint.getTypeName()
-    ) as MetricPrepBlueprint;
+    this.prepBlueprint = root.getComponent(MetricPrepBlueprint.getTypeName()) as MetricPrepBlueprint;
     this.visionService = root.getComponent(
       RapidRouterVisionService.getTypeName()
     ) as RapidRouterVisionService;
+    const layer = findByName(root, "DiegeticLayer") || root;
+    this.visionStandIn = layer.getComponent(VisionScanStandIn.getTypeName()) as VisionScanStandIn;
+  }
+
+  /**
+   * v4 diegetic + hero layer on StationsRoot/DiegeticLayer: DAG conduits, chrono rings, gaze
+   * edge beacons, spatula flip guide and the deterministic vision stand-in. Created at runtime
+   * (idempotent) so the layer never depends on an unsaved editor scene edit.
+   */
+  private ensureHeroComponents(root: SceneObject): void {
+    let layer = findByName(root, "DiegeticLayer");
+    if (!layer) {
+      layer = global.scene.createSceneObject("DiegeticLayer");
+      layer.setParent(root);
+    }
+    for (const typeName of [
+      DAGCounterConduit.getTypeName(),
+      DiegeticChronoRing.getTypeName(),
+      GazeEdgeBeacon.getTypeName(),
+      SpatulaTechniqueGuide.getTypeName(),
+      VisionScanStandIn.getTypeName(),
+    ]) {
+      if (!layer.getComponent(typeName)) layer.createComponent(typeName);
+    }
   }
 
   private suppressLegacyVisuals(): void {
     const root = this.getSceneObject();
 
+    // Legacy Btn_* objects stay alive (LEAF taps them via MiseFlowButtonTrigger)
+    // but are visually removed in favour of the Director HUD.
     const legacyButtons = [
       "Btn_StepChop",
       "Btn_FillPortion",
@@ -348,8 +297,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       "Btn_Reset",
     ];
     for (const btnName of legacyButtons) {
-      const btnObjs = findAllByName(root, btnName);
-      for (const btnObj of btnObjs) {
+      for (const btnObj of findAllByName(root, btnName)) {
         const rmv = btnObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
         if (rmv) rmv.enabled = false;
         const count = btnObj.getChildrenCount();
@@ -360,6 +308,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       }
     }
 
+    // Legacy Text3D labels keep their text (LEAF contract); only hidden.
     const legacyLabels = [
       "PrepStatusLabel",
       "SkilletStatusLabel",
@@ -375,34 +324,22 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       "Lbl_Reset",
     ];
     for (const lblName of legacyLabels) {
-      const lblObjs = findAllByName(root, lblName);
-      for (const lblObj of lblObjs) {
+      for (const lblObj of findAllByName(root, lblName)) {
         lblObj.getTransform().setLocalScale(new vec3(0.0001, 0.0001, 0.0001));
       }
     }
 
-    const cardBackings = [
-      "CardBacking",
-      "DriftBacking",
-      "WristPillBacking",
-      "DebriefBacking",
-    ];
+    const cardBackings = ["CardBacking", "DriftBacking", "WristPillBacking", "DebriefBacking"];
     for (const backingName of cardBackings) {
-      const bObjs = findAllByName(root, backingName);
-      for (const bObj of bObjs) {
+      for (const bObj of findAllByName(root, backingName)) {
         const rmv = bObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
         if (rmv) rmv.enabled = false;
         bObj.getTransform().setLocalScale(new vec3(0.0001, 0.0001, 0.0001));
       }
     }
 
-    const initialHiddenCards = [
-      "PlatingDebriefCard",
-      "DriftDecisionCard",
-    ];
-    for (const cName of initialHiddenCards) {
-      const cObjs = findAllByName(root, cName);
-      for (const cObj of cObjs) {
+    for (const cName of ["PlatingDebriefCard", "DriftDecisionCard"]) {
+      for (const cObj of findAllByName(root, cName)) {
         cObj.enabled = false;
       }
     }
@@ -419,7 +356,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       } else if (key === "3" || key === "Key_3") {
         this.controller.onTransferPressed();
       } else if (key === "4" || key === "Key_4") {
-        this.controller.onCheckSearPressed();
+        this.triggerRealAiVisionScan();
       } else if (key === "5" || key === "Key_5") {
         this.controller.onSimulatePrepDrift();
       } else if (key === "6" || key === "Key_6") {
@@ -431,521 +368,399 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   }
 
   // ==========================================================================
-  // Guaranteed Non-Overlapping Spatial Layout Construction
+  // Construction
   // ==========================================================================
 
   private buildSpatialInterface(): void {
     const root = this.getSceneObject();
-    const DEG = Math.PI / 180;
 
-    // 1. Skillet Station Card (Left: X = -14.2cm, Y = 9.8cm, Z = -11.0cm, zero X overlap with saucepot)
-    this.buildSkilletCard(
-      root,
-      new vec3(-14.2, 9.8, -11.0),
-      quat.fromEulerAngles(-12 * DEG, 8 * DEG, 0)
-    );
+    this.skilletPill = this.buildPill(root, "SkilletStationUI", SKILLET_PILL_ANCHOR, SKILLET_STEM_FOOT_Y, COLOR_GOLD_HEAT, "SEAR 01:00", "FLIP AT ZERO");
+    this.saucePill = this.buildPill(root, "SauceStationUI", SAUCE_PILL_ANCHOR, SAUCE_STEM_FOOT_Y, COLOR_CYAN_PREP, "SAUCE 00:50", "WAITS ON PREP");
+    this.prepPill = this.buildPill(root, "PrepStationUI", PREP_PILL_ANCHOR, PREP_STEM_FOOT_Y, COLOR_CYAN_PREP, "CUT 0/8", "SLICE ON GUIDES");
+    this.prepPill.targetH = PILL_H_EXPANDED; // the cook's first task starts open
+    this.prepPill.curH = PILL_H_EXPANDED;
+    this.layoutPill(this.prepPill);
 
-    // 2. Saucepot Station Card (Center: X = 0.0cm, Y = 11.2cm, Z = -15.5cm, elevated well clear above pot rim!)
-    this.buildSauceCard(
-      root,
-      new vec3(0.0, 11.2, -15.5),
-      quat.fromEulerAngles(-10 * DEG, 0, 0)
-    );
-
-    // 3. Prep Station Card (Right: X = +14.2cm, Y = 9.8cm, Z = -11.0cm, zero X overlap with saucepot)
-    this.buildPrepCard(
-      root,
-      new vec3(14.2, 9.8, -11.0),
-      quat.fromEulerAngles(-12 * DEG, -8 * DEG, 0)
-    );
-
-    // 4. Master Plating Convergence Target (Apex Canopy: Y = 18.2cm, elevated clear above Saucepot Card)
-    this.buildPlateAnchor(
-      root,
-      new vec3(0.0, 18.2, -15.5),
-      quat.fromEulerAngles(-14 * DEG, 0, 0)
-    );
-
-    // 5. Director Demo Palette (Console docked at lower foreground chest/wrist zone, generous 30.5cm width)
-    this.buildDirectorPalette(
-      root,
-      new vec3(0.0, -3.4, 12.5),
-      quat.fromEulerAngles(-18 * DEG, 0, 0)
-    );
-
-    // 6. Hidden harness object for LEAF test compatibility
+    this.buildChronometer(root, CHRONO_CENTER);
+    this.buildDirectorPalette(root, DIRECTOR_CENTER);
     this.buildLeafTestHarnessObject(root);
   }
 
-  /**
-   * Builds a sleek Dark Smoked Glass Card with calibrated 85% practical opaqueness.
-   * Features deep obsidian translucent background with subtle luminous cyber-ice border.
-   */
-  private createDarkGlassCard(
+  private createGlass(
     parent: SceneObject,
     name: string,
-    pos: vec3,
-    rot: quat,
-    width: number,
-    height: number,
-    backingAlpha: number = 0.85
-  ): { cardObj: SceneObject; contentHost: SceneObject } {
-    const existing = findByName(parent, name);
-    if (existing) existing.destroy();
-
-    const cardObj = global.scene.createSceneObject(name);
-    cardObj.setParent(parent);
-    cardObj.getTransform().setLocalPosition(pos);
-    cardObj.getTransform().setLocalRotation(rot);
-
-    cardObj.createComponent("Component.Canvas");
-    const backPlate = cardObj.createComponent(BackPlate.getTypeName()) as BackPlate;
-    backPlate.size = new vec2(width, height);
-    backPlate.style = "simple";
-
-    // Track card for calibrated 85% dark obsidian smoked glass styling
-    const cfg: CardStyleConfig = {
-      cardObj,
-      width,
-      height,
-      alpha: backingAlpha,
-      cornerRadius: 0.9,
-      borderSize: 0.09,
-      borderColor: new vec4(0.28, 0.40, 0.58, 0.70),
-      backgroundColor: new vec4(0.06, 0.08, 0.12, 1.0),
-    };
-    this.cardConfigs.push(cfg);
-
-    backPlate.onInitialized.add(() => {
-      this.applyCardStyle(cfg);
-    });
-
-    // Content plane (0.02cm forward) so text sits flat on the glass surface
-    const contentHost = global.scene.createSceneObject(`${name}_Content`);
-    contentHost.setParent(cardObj);
-    contentHost.getTransform().setLocalPosition(new vec3(0, 0, 0.02));
-
-    const flex = contentHost.createComponent(FlexLayout.getTypeName()) as FlexLayout;
-    flex.width = width;
-    flex.height = -1;
-    flex.direction = FlexDirection.Column;
-    flex.justifyContent = FlexJustify.Center;
-    flex.alignItems = FlexAlign.Center;
-    flex.rowGap = 0.18;
-    flex.paddingTop = 0.35;
-    flex.paddingBottom = 0.35;
-    flex.paddingLeft = 0.5;
-    flex.paddingRight = 0.5;
-
-    return { cardObj, contentHost };
+    localPos: vec3,
+    size: vec2,
+    bg: vec4,
+    border: vec4,
+    borderSize: number,
+    radius: number,
+    opacity: number
+  ): { obj: SceneObject; style: GlassStyle } {
+    const obj = global.scene.createSceneObject(name);
+    obj.setParent(parent);
+    obj.getTransform().setLocalPosition(localPos);
+    const rr = obj.createComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
+    rr.size = size;
+    const style: GlassStyle = { rr, bg, border, borderSize, radius, opacity };
+    applyGlass(style);
+    this.glassStyles.push(style);
+    return { obj, style };
   }
 
-  private createTextItem(
+  private createText(
     parent: SceneObject,
     name: string,
     content: string,
-    role: TextRole,
+    size: number,
+    weight: number,
     color: vec4,
+    localPos: vec3,
     width: number,
-    height: number,
-    hAlign: HorizontalAlignment = HorizontalAlignment.Center
+    height: number
   ): Text {
     const obj = global.scene.createSceneObject(name);
     obj.setParent(parent);
+    obj.getTransform().setLocalPosition(localPos);
     const txt = obj.createComponent("Component.Text") as Text;
     txt.text = content;
-    applyTextStyle(txt, role, color, hAlign);
+    txt.size = size;
+    (txt as Text & { weight?: number }).weight = weight;
+    txt.textFill.mode = TextFillMode.Solid;
+    txt.textFill.color = color;
+    txt.horizontalAlignment = HorizontalAlignment.Center;
+    txt.verticalAlignment = VerticalAlignment.Center;
+    txt.horizontalOverflow = HorizontalOverflow.Shrink;
+    txt.verticalOverflow = VerticalOverflow.Overflow;
+    txt.depthTest = true;
     txt.layoutRect = Rect.create(-width / 2, width / 2, -height / 2, height / 2);
-    obj.createComponent(FlexItem.getTypeName());
     return txt;
   }
 
-  private createButtonItem(
+  private buildPill(
     parent: SceneObject,
     name: string,
-    label: string,
-    width: number,
-    height: number,
-    onPress: () => void,
-    addFlexItem: boolean = true
-  ): Button {
-    const obj = global.scene.createSceneObject(name);
-    obj.setParent(parent);
-    const btn = obj.createComponent(Button.getTypeName()) as Button;
-    btn.size = new vec3(width, height, 0.4);
+    anchor: vec3,
+    stemFootY: number,
+    accent: vec4,
+    metric: string,
+    action: string
+  ): Pill {
+    const existing = findByName(parent, name);
+    if (existing) existing.destroy();
 
-    const ec = obj.createComponent(ElementContent.getTypeName()) as ElementContent;
-    ec.text = label;
-    ec.textSize = TYPE_SCALE["Button"].size * 0.95;
-    ec.sizeOverride = new vec2(width, height);
+    const root = global.scene.createSceneObject(name);
+    root.setParent(parent);
+    root.getTransform().setLocalPosition(anchor);
+    root.getTransform().setLocalRotation(faceCamera(anchor));
+    root.createComponent("Component.Canvas");
 
-    btn.onTriggerUp.add(onPress);
-    if (addFlexItem) {
-      obj.createComponent(FlexItem.getTypeName());
+    const h = PILL_H_COLLAPSED;
+    const glass = this.createGlass(
+      root,
+      `${name}_Glass`,
+      new vec3(0, h / 2, 0),
+      new vec2(PILL_W, h),
+      withAlpha(COLOR_GLASS, 0.9),
+      withAlpha(accent, 0.95),
+      0.1,
+      h / 2,
+      0.86
+    );
+
+    const metricText = this.createText(
+      root,
+      `${name}_Metric`,
+      metric,
+      PILL_METRIC_SIZE,
+      700,
+      COLOR_TEXT_HEADING,
+      new vec3(0, PILL_PAD + PILL_METRIC_H / 2, 0.03),
+      PILL_W - 0.7,
+      PILL_METRIC_H
+    );
+    const actionText = this.createText(
+      root,
+      `${name}_Action`,
+      action,
+      PILL_ACTION_SIZE,
+      800,
+      accent,
+      new vec3(0, PILL_PAD + PILL_ACTION_H / 2, 0.03),
+      PILL_W - 0.7,
+      PILL_ACTION_H
+    );
+    actionText.getSceneObject().enabled = false;
+
+    // Tether: thin luminous stem + foot dot so the pill reads as attached to
+    // its cookware rather than floating in front of the face.
+    let stem: GlassStyle | null = null;
+    let stemObj: SceneObject | null = null;
+    let foot: GlassStyle | null = null;
+    const stemLen = anchor.y - stemFootY;
+    if (stemLen > 0.3) {
+      const stemPos = new vec3(anchor.x, (anchor.y + stemFootY) / 2, anchor.z);
+      const s = this.createGlass(
+        parent,
+        `${name}_Stem`,
+        stemPos,
+        new vec2(0.09, stemLen),
+        withAlpha(accent, 0.75),
+        withAlpha(accent, 0.75),
+        0.0,
+        0.045,
+        0.8
+      );
+      s.obj.getTransform().setLocalRotation(yawToCamera(stemPos));
+      stem = s.style;
+      stemObj = s.obj;
+
+      const f = this.createGlass(
+        s.obj,
+        `${name}_StemFoot`,
+        new vec3(0, -stemLen / 2, 0.01),
+        new vec2(0.42, 0.42),
+        withAlpha(accent, 0.95),
+        withAlpha(COLOR_TEXT_HEADING, 0.9),
+        0.05,
+        0.21,
+        0.95
+      );
+      foot = f.style;
     }
-    return btn;
+
+    return {
+      root,
+      glassObj: glass.obj,
+      glass: glass.style,
+      metricText,
+      actionText,
+      stem,
+      stemObj,
+      foot,
+      curH: h,
+      targetH: h,
+      pulse: 0,
+      key: "",
+      accent,
+      metricColor: COLOR_TEXT_HEADING,
+    };
   }
 
-  // --------------------------------------------------------------------------
-  // 1. Skillet Station Card
-  // --------------------------------------------------------------------------
-  private buildSkilletCard(parent: SceneObject, pos: vec3, rot: quat): void {
-    const { contentHost } = this.createDarkGlassCard(
-      parent,
-      "SkilletStationUI",
-      pos,
-      rot,
-      12.6,
-      6.4,
-      0.85
-    );
-
-    this.skilletBadgeText = this.createTextItem(
-      contentHost,
-      "SkilletBadge",
-      "SKILLET · ACTIVE SEARING",
-      "Caption",
-      COLOR_GOLD_HEAT,
-      11.8,
-      0.75
-    );
-
-    this.skilletTimerText = this.createTextItem(
-      contentHost,
-      "SkilletTimer",
-      "01:00",
-      "Headline1",
-      COLOR_TEXT_HEADING,
-      11.8,
-      1.45
-    );
-
-    this.skilletActionText = this.createTextItem(
-      contentHost,
-      "SkilletAction",
-      "Flip at zero • Invariant Duration",
-      "Subheadline",
-      COLOR_GOLD_HEAT,
-      11.8,
-      1.05
-    );
-
-    this.skilletExplanationText = this.createTextItem(
-      contentHost,
-      "SkilletExplanation",
-      "Skin crisping over medium-high heat. Sensor monitoring Maillard browning.",
-      "Explanation",
-      COLOR_TEXT_BODY,
-      11.8,
-      1.45
-    );
-  }
-
-  // --------------------------------------------------------------------------
-  // 2. Saucepot Station Card
-  // --------------------------------------------------------------------------
-  private buildSauceCard(parent: SceneObject, pos: vec3, rot: quat): void {
-    const { contentHost } = this.createDarkGlassCard(
-      parent,
-      "SauceStationUI",
-      pos,
-      rot,
-      12.6,
-      6.4,
-      0.85
-    );
-
-    this.sauceBadgeText = this.createTextItem(
-      contentHost,
-      "SauceBadge",
-      "SAUCE · DEPENDENT STEP",
-      "Caption",
-      COLOR_CYAN_PREP,
-      11.8,
-      0.75
-    );
-
-    this.sauceTimerText = this.createTextItem(
-      contentHost,
-      "SauceTimer",
-      "00:50",
-      "Headline1",
-      COLOR_TEXT_HEADING,
-      11.8,
-      1.45
-    );
-
-    this.sauceActionText = this.createTextItem(
-      contentHost,
-      "SauceAction",
-      "Awaiting shallots from prep board",
-      "Subheadline",
-      COLOR_CYAN_PREP,
-      11.8,
-      1.05
-    );
-
-    this.sauceExplanationText = this.createTextItem(
-      contentHost,
-      "SauceExplanation",
-      "Simmer window holds until aromatics arrive. Schedule reflows to synchronize plating.",
-      "Explanation",
-      COLOR_TEXT_BODY,
-      11.8,
-      1.45
-    );
-  }
-
-  // --------------------------------------------------------------------------
-  // 3. Prep Station Card
-  // --------------------------------------------------------------------------
-  private buildPrepCard(parent: SceneObject, pos: vec3, rot: quat): void {
-    const { contentHost } = this.createDarkGlassCard(
-      parent,
-      "PrepStationUI",
-      pos,
-      rot,
-      12.6,
-      6.4,
-      0.85
-    );
-
-    this.prepBadgeText = this.createTextItem(
-      contentHost,
-      "PrepBadge",
-      "PREP · METRIC CUTTING",
-      "Caption",
-      COLOR_CYAN_PREP,
-      11.8,
-      0.75
-    );
-
-    this.prepProgressText = this.createTextItem(
-      contentHost,
-      "PrepProgress",
-      "Cuts: 0/8 • 0% Portion",
-      "Headline2",
-      COLOR_TEXT_HEADING,
-      11.8,
-      1.45
-    );
-
-    this.prepActionText = this.createTextItem(
-      contentHost,
-      "PrepAction",
-      "Slice shallot along 1.5cm guide marks",
-      "Subheadline",
-      COLOR_CYAN_PREP,
-      11.8,
-      1.05
-    );
-
-    this.prepExplanationText = this.createTextItem(
-      contentHost,
-      "PrepExplanation",
-      "Even slices ensure uniform glaze caramelization. Volumetric target: 45 cm³ dice.",
-      "Explanation",
-      COLOR_TEXT_BODY,
-      11.8,
-      1.45
-    );
-  }
-
-  // --------------------------------------------------------------------------
-  // 4. Master Plating Convergence Target (Apex Canopy)
-  // Elevated at Tier 3 Apex (0, 18.2, -15.5) -> ZERO overlap with vessels/rings!
-  // --------------------------------------------------------------------------
-  private buildPlateAnchor(parent: SceneObject, pos: vec3, rot: quat): void {
+  private buildChronometer(parent: SceneObject, center: vec3): void {
     const existing = findByName(parent, "PlateAnchorUI");
     if (existing) existing.destroy();
 
-    const anchorObj = global.scene.createSceneObject("PlateAnchorUI");
-    anchorObj.setParent(parent);
-    anchorObj.getTransform().setLocalPosition(pos);
-    anchorObj.getTransform().setLocalRotation(rot);
+    const root = global.scene.createSceneObject("PlateAnchorUI");
+    root.setParent(parent);
+    root.getTransform().setLocalPosition(center);
+    root.getTransform().setLocalRotation(faceCamera(center));
+    root.createComponent("Component.Canvas");
 
-    anchorObj.createComponent("Component.Canvas");
-    const backPlate = anchorObj.createComponent(BackPlate.getTypeName()) as BackPlate;
-    backPlate.size = new vec2(15.0, 4.2);
-    backPlate.style = "simple";
-
-    // Track card for calibrated 88% master obsidian glass styling
-    const anchorCfg: CardStyleConfig = {
-      cardObj: anchorObj,
-      width: 15.0,
-      height: 4.2,
-      alpha: 0.88, // Calibrated 88% opaqueness master chronometer
-      cornerRadius: 1.0,
-      borderSize: 0.14,
-      borderColor: new vec4(0.22, 0.85, 0.60, 0.80),
-      backgroundColor: new vec4(0.05, 0.07, 0.11, 1.0),
-    };
-    this.cardConfigs.push(anchorCfg);
-
-    backPlate.onInitialized.add(() => {
-      this.applyCardStyle(anchorCfg);
-    });
-
-    const contentHost = global.scene.createSceneObject("PlateAnchor_Content");
-    contentHost.setParent(anchorObj);
-    contentHost.getTransform().setLocalPosition(new vec3(0, 0, 0.02));
-
-    const flex = contentHost.createComponent(FlexLayout.getTypeName()) as FlexLayout;
-    flex.width = 15.0;
-    flex.height = -1;
-    flex.direction = FlexDirection.Column;
-    flex.justifyContent = FlexJustify.Center;
-    flex.alignItems = FlexAlign.Center;
-    flex.rowGap = 0.14;
-    flex.paddingTop = 0.32;
-    flex.paddingBottom = 0.32;
-
-    this.plateAnchorSubText = this.createTextItem(
-      contentHost,
-      "PlateAnchorBadge",
-      "CONVERGENCE TARGET · MASTER CHRONOMETER",
-      "Caption",
-      COLOR_EMERALD_DONE,
-      14.0,
-      0.75
+    const w = 7.4;
+    const h = 1.45;
+    const g = this.createGlass(
+      root,
+      "PlateAnchor_Glass",
+      new vec3(0, 0, 0),
+      new vec2(w, h),
+      withAlpha(COLOR_GLASS, 0.9),
+      withAlpha(COLOR_EMERALD_DONE, 0.95),
+      0.09,
+      h / 2,
+      0.86
     );
-
-    this.plateAnchorTimeText = this.createTextItem(
-      contentHost,
+    this.chronoGlass = g.style;
+    this.chronoText = this.createText(
+      root,
       "PlateAnchorTime",
-      "Plate in 06:40",
-      "Headline1",
+      "PLATE IN 06:40",
+      32,
+      700,
       COLOR_TEXT_HEADING,
-      14.0,
-      1.55
+      new vec3(0, 0, 0.03),
+      w - 0.6,
+      h - 0.3
     );
   }
 
   // --------------------------------------------------------------------------
-  // 5. Director Demo Palette (HUD Dock)
+  // Director HUD: COOK (Step Cut, Transfer, AI Vision) | SIM (+25s, Warp, Reset)
   // --------------------------------------------------------------------------
-  private buildDirectorPalette(parent: SceneObject, pos: vec3, rot: quat): void {
+  private buildDirectorPalette(parent: SceneObject, center: vec3): void {
     const existing = findByName(parent, "DirectorPaletteUI");
     if (existing) existing.destroy();
 
-    const dockObj = global.scene.createSceneObject("DirectorPaletteUI");
-    dockObj.setParent(parent);
-    dockObj.getTransform().setLocalPosition(pos);
-    dockObj.getTransform().setLocalRotation(rot);
+    const dock = global.scene.createSceneObject("DirectorPaletteUI");
+    dock.setParent(parent);
+    dock.getTransform().setLocalPosition(center);
+    dock.getTransform().setLocalRotation(faceCamera(center));
+    dock.createComponent("Component.Canvas");
 
-    dockObj.createComponent("Component.Canvas");
-    const backPlate = dockObj.createComponent(BackPlate.getTypeName()) as BackPlate;
-    backPlate.size = new vec2(30.5, 3.2);
-    backPlate.style = "simple";
+    const BTN_W = 2.4;
+    const BTN_H = 1.1;
+    const BTN_GAP = 0.18;
+    const TAG_W = 1.3;
+    const TAG_GAP = 0.12;
+    const GROUP_GAP = 0.55;
+    const PAD_X = 0.32;
+    const PANEL_H = 1.9;
+    const groupW = TAG_W + TAG_GAP + 3 * BTN_W + 2 * BTN_GAP;
+    const panelW = PAD_X * 2 + groupW * 2 + GROUP_GAP;
 
-    // Track card for calibrated 84% dark console glass styling
-    const dockCfg: CardStyleConfig = {
-      cardObj: dockObj,
-      width: 30.5,
-      height: 3.2,
-      alpha: 0.84,
-      cornerRadius: 0.8,
-      borderSize: 0.08,
-      borderColor: new vec4(0.26, 0.36, 0.50, 0.65),
-      backgroundColor: new vec4(0.06, 0.08, 0.12, 1.0),
+    this.createGlass(
+      dock,
+      "Director_Glass",
+      new vec3(0, 0, -0.1),
+      new vec2(panelW, PANEL_H),
+      withAlpha(COLOR_GLASS, 0.88),
+      withAlpha(COLOR_SILVER, 0.55),
+      0.06,
+      0.6,
+      0.84
+    );
+
+    const content = global.scene.createSceneObject("Director_Content");
+    content.setParent(dock);
+    content.getTransform().setLocalPosition(new vec3(0, 0, 0.05));
+
+    type BtnSpec = { name: string; label: string; accent: vec4; onPress: () => void };
+    const groups: { tag: string; tagColor: vec4; buttons: BtnSpec[] }[] = [
+      {
+        tag: "COOK",
+        tagColor: COLOR_CYAN_PREP,
+        buttons: [
+          { name: "UI_Btn_StepChop", label: "Step Cut", accent: COLOR_CYAN_PREP, onPress: () => { if (this.controller) this.controller.onStepChopPressed(); } },
+          { name: "UI_Btn_Transfer", label: "Transfer", accent: COLOR_CYAN_PREP, onPress: () => { if (this.controller) this.controller.onTransferPressed(); } },
+          { name: "UI_Btn_InspectSear", label: "AI Vision", accent: COLOR_VIOLET_AI, onPress: () => { this.triggerRealAiVisionScan(); } },
+        ],
+      },
+      {
+        tag: "SIM",
+        tagColor: COLOR_AMBER_DRIFT,
+        buttons: [
+          { name: "UI_Btn_TriggerDrift", label: "+25s Drift", accent: COLOR_AMBER_DRIFT, onPress: () => { if (this.controller) this.controller.onSimulatePrepDrift(); } },
+          { name: "UI_Btn_TimeWarp", label: "10x Warp", accent: COLOR_EMERALD_DONE, onPress: () => { if (this.controller) this.controller.onToggleTimeWarpPressed(); } },
+          { name: "UI_Btn_Reset", label: "Reset", accent: COLOR_SILVER, onPress: () => { if (this.controller) this.controller.onResetPressed(); } },
+        ],
+      },
+    ];
+
+    let x = -panelW / 2 + PAD_X;
+    groups.forEach((group, gi) => {
+      this.createText(
+        content,
+        `Director_Tag_${group.tag}`,
+        group.tag,
+        15,
+        800,
+        group.tagColor,
+        new vec3(x + TAG_W / 2, 0, 0),
+        TAG_W,
+        BTN_H
+      );
+      x += TAG_W + TAG_GAP;
+      for (let i = 0; i < group.buttons.length; i++) {
+        const spec = group.buttons[i];
+        const db = this.createDirectorButton(content, spec.name, spec.label, spec.accent, new vec3(x + BTN_W / 2, 0, 0), BTN_W, BTN_H, spec.onPress);
+        if (spec.name === "UI_Btn_TimeWarp") this.warpButton = db;
+        x += BTN_W + (i < group.buttons.length - 1 ? BTN_GAP : 0);
+      }
+      if (gi === 0) {
+        this.createGlass(
+          content,
+          "Director_Divider",
+          new vec3(x + GROUP_GAP / 2, 0, 0),
+          new vec2(0.05, PANEL_H - 0.6),
+          withAlpha(COLOR_SILVER, 0.6),
+          withAlpha(COLOR_SILVER, 0.6),
+          0.0,
+          0.025,
+          0.8
+        );
+        x += GROUP_GAP;
+      }
+    });
+  }
+
+  private createDirectorButton(
+    parent: SceneObject,
+    name: string,
+    label: string,
+    accent: vec4,
+    pos: vec3,
+    width: number,
+    height: number,
+    onPress: () => void
+  ): DirectorButton {
+    // Neon frame behind the button (colour-coded edge + feedback surface)
+    const frame = this.createGlass(
+      parent,
+      `${name}_Frame`,
+      // Keep clear depth gaps (glass -0.1, frame 0.0, button +0.05 in dock
+      // space) so the neon frame never z-fights the glass or the button.
+      new vec3(pos.x, pos.y, -0.05),
+      new vec2(width + 0.12, height + 0.12),
+      scaleRgb(accent, 0.14, 0.9),
+      withAlpha(accent, 0.95),
+      0.075,
+      (height + 0.12) / 2,
+      0.92
+    );
+
+    const obj = global.scene.createSceneObject(name);
+    obj.setParent(parent);
+    obj.getTransform().setLocalPosition(pos);
+    const btn = obj.createComponent(Button.getTypeName()) as Button;
+    btn.setVariant({ theme: "SnapOS2", shape: "Capsule", style: "Ghost" });
+    btn.size = new vec3(width, height, 0.3);
+
+    const ec = obj.createComponent(ElementContent.getTypeName()) as ElementContent;
+    ec.text = label;
+    ec.padding = { top: 0.12, right: 0.14, bottom: 0.12, left: 0.14 };
+    ec.textSize = 15;
+    ec.sizeOverride = new vec2(width, height);
+
+    const db: DirectorButton = {
+      obj,
+      frameObj: frame.obj,
+      frame: frame.style,
+      accent,
+      hovered: false,
+      pressed: false,
+      latched: false,
+      scale: 1,
     };
-    this.cardConfigs.push(dockCfg);
 
-    backPlate.onInitialized.add(() => {
-      this.applyCardStyle(dockCfg);
+    btn.onHoverEnter.add(() => { db.hovered = true; this.styleDirectorButton(db); });
+    btn.onHoverExit.add(() => { db.hovered = false; db.pressed = false; this.styleDirectorButton(db); });
+    btn.onTriggerDown.add(() => { db.pressed = true; this.styleDirectorButton(db); });
+    btn.onTriggerUp.add(() => {
+      db.pressed = false;
+      this.styleDirectorButton(db);
+      onPress();
     });
 
-    const contentHost = global.scene.createSceneObject("Director_Content");
-    contentHost.setParent(dockObj);
-    contentHost.getTransform().setLocalPosition(new vec3(0, 0, 0.02));
+    this.directorButtons.push(db);
+    return db;
+  }
 
-    const flex = contentHost.createComponent(FlexLayout.getTypeName()) as FlexLayout;
-    flex.width = 30.5;
-    flex.height = -1;
-    flex.direction = FlexDirection.Row;
-    flex.justifyContent = FlexJustify.Center;
-    flex.alignItems = FlexAlign.Center;
-    flex.columnGap = 0.20;
-    flex.paddingTop = 0.30;
-    flex.paddingBottom = 0.30;
-    flex.paddingLeft = 0.25;
-    flex.paddingRight = 0.25;
-
-    this.createTextItem(
-      contentHost,
-      "DirectorTag",
-      "[DIRECTOR]",
-      "Caption",
-      COLOR_CYAN_PREP,
-      3.8,
-      1.7
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_TriggerDrift",
-      "+25s Drift",
-      4.6,
-      1.75,
-      () => {
-        if (this.controller) this.controller.onSimulatePrepDrift();
-      }
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_TimeWarp",
-      "10x Warp",
-      4.2,
-      1.75,
-      () => {
-        if (this.controller) this.controller.onToggleTimeWarpPressed();
-      }
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_InspectSear",
-      "AI Vision",
-      4.2,
-      1.75,
-      () => {
-        this.triggerRealAiVisionScan();
-      }
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_StepChop",
-      "Step Cut",
-      4.0,
-      1.75,
-      () => {
-        if (this.controller) this.controller.onStepChopPressed();
-      }
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_Transfer",
-      "Transfer",
-      4.2,
-      1.75,
-      () => {
-        if (this.controller) this.controller.onTransferPressed();
-      }
-    );
-
-    this.createButtonItem(
-      contentHost,
-      "UI_Btn_Reset",
-      "Reset",
-      3.6,
-      1.75,
-      () => {
-        if (this.controller) this.controller.onResetPressed();
-      }
-    );
+  private styleDirectorButton(db: DirectorButton): void {
+    const f = db.frame;
+    if (db.pressed) {
+      f.bg = scaleRgb(db.accent, 0.55, 0.95);
+      f.borderSize = 0.12;
+      f.border = withAlpha(COLOR_TEXT_HEADING, 1.0);
+    } else if (db.hovered || db.latched) {
+      f.bg = scaleRgb(db.accent, 0.32, 0.92);
+      f.borderSize = 0.11;
+      f.border = withAlpha(db.accent, 1.0);
+    } else {
+      f.bg = scaleRgb(db.accent, 0.14, 0.9);
+      f.borderSize = 0.075;
+      f.border = withAlpha(db.accent, 0.95);
+    }
+    applyGlass(f);
   }
 
   private buildLeafTestHarnessObject(parent: SceneObject): void {
@@ -959,33 +774,37 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     }
   }
 
+  private applyAllGlass(): void {
+    for (const s of this.glassStyles) applyGlass(s);
+  }
+
   // ==========================================================================
   // Real AI Vision Scanner & RapidRouter Inference
   // ==========================================================================
 
   public triggerRealAiVisionScan(): void {
+    // Recording path: deterministic local stand-in through the real ProposalGate (no network).
+    // The live RapidRouter call stays available behind RapidRouterVisionService.useLiveRapidRouter.
+    const live = this.visionService && this.visionService.useLiveRapidRouter;
+    if (!live && this.visionStandIn) {
+      this.visionStandIn.runNextScan(); // verdict arrives via AI_VISION_STATE_CHANGED
+      return;
+    }
     if (this.isAiScanning) return;
     this.isAiScanning = true;
     this.aiScanTimer = 1.2;
-
-    if (this.skilletBadgeText) {
-      this.skilletBadgeText.text = "AI SENSOR · SCANNING MAILLARD";
-      this.skilletBadgeText.textFill.color = COLOR_CYAN_PREP;
-    }
-    if (this.skilletExplanationText) {
-      this.skilletExplanationText.text = "RapidRouter Qwen-3.7 Vision analyzing pan surface for skin browning...";
-    }
+    this.aiExpandUntil = this.clock + 1.2 + EXPAND_PULSE_SEC;
 
     if (this.visionService) {
       this.visionService.analyzeSearStage("GOLDEN").then((evalResult) => {
         this.aiLatestMessage = evalResult.displayText;
-        this.refreshSkilletCard();
+        this.aiExpandUntil = this.clock + EXPAND_PULSE_SEC;
       });
     }
   }
 
   // ==========================================================================
-  // State Machine & Events
+  // Events
   // ==========================================================================
 
   private bindEventListeners(): void {
@@ -993,324 +812,259 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       this.triggerRealAiVisionScan();
     });
 
+    this.eventBus.on("AI_VISION_STATE_CHANGED", (data: any) => {
+      if (!data || data.state !== "RESULT") return;
+      this.visionMetric = data.hudMetric || "";
+      this.visionAction = data.hudAction || "";
+      this.visionAccent =
+        data.verdict === "REJECTED" ? COLOR_CORAL_ALERT : data.verdict === "OPTIMAL" ? COLOR_EMERALD_DONE : COLOR_VIOLET_AI;
+      this.visionKey = `vision:${data.scan}`;
+      this.visionUntil = this.clock + VISION_VERDICT_SEC;
+    });
+
     this.eventBus.on("STATION_STEP_COMPLETED", (data: any) => {
       if (data && data.stationId === "PREP") {
         this.isPrepTransferred = true;
-        this.refreshPrepCard();
-        this.refreshSauceCard();
+        this.transferExpandUntil = this.clock + EXPAND_PULSE_SEC;
       }
     });
 
     this.eventBus.on("DRIFT_RECORDED", (data: any) => {
-      const delta = (data && data.deltaSeconds) ? data.deltaSeconds : 25.0;
+      const delta = data && data.deltaSeconds ? data.deltaSeconds : 25.0;
       this.isDriftActive = true;
+      this.isHeld = false;
       this.autoApplyCountdown = 3.0;
       this.plateAnchorTargetSec = 400 + delta;
-
       const driftCard = findByName(this.getSceneObject(), "DriftDecisionCard");
-      if (driftCard) {
-        driftCard.enabled = true;
-      }
-
-      this.refreshAllCards();
+      if (driftCard) driftCard.enabled = true;
     });
 
-    this.eventBus.on("HOLD_CONFIRMED", (_data: any) => {
+    this.eventBus.on("HOLD_CONFIRMED", (data: any) => {
       this.isDriftActive = false;
       this.autoApplyCountdown = -1.0;
-      this.refreshAllCards();
+      this.isHeld = !!(data && data.isHeld);
+      this.holdExpandUntil = this.clock + EXPAND_PULSE_SEC;
     });
 
     this.eventBus.on("VISUAL_BROWNING_CHECK", (data: any) => {
       if (data && data.advisoryMessage) {
         this.aiLatestMessage = data.advisoryMessage;
-        this.refreshSkilletCard();
+        this.aiExpandUntil = this.clock + EXPAND_PULSE_SEC;
+      }
+    });
+
+    this.eventBus.on("TIME_WARP_TOGGLED", (data: any) => {
+      this.isTimeWarp = !!(data && data.multiplier && data.multiplier > 1);
+      if (this.warpButton) {
+        this.warpButton.latched = this.isTimeWarp;
+        this.styleDirectorButton(this.warpButton);
       }
     });
 
     this.eventBus.on("PLATING_CONVERGENCE", () => {
       this.isPlated = true;
       this.isDriftActive = false;
-      if (this.plateAnchorTimeText) {
-        this.plateAnchorTimeText.text = "READY TO PLATE";
-        this.plateAnchorTimeText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.plateAnchorSubText) {
-        this.plateAnchorSubText.text = "3/3 STATIONS SYNCHRONIZED";
-        this.plateAnchorSubText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      this.refreshAllCards();
     });
 
     this.eventBus.on("RESET_REQUESTED", () => {
       this.isPrepTransferred = false;
       this.isDriftActive = false;
+      this.isHeld = false;
       this.isPlated = false;
       this.autoApplyCountdown = -1.0;
       this.plateAnchorTargetSec = 400;
       this.plateAnchorDisplaySec = 400;
       this.aiLatestMessage = "";
       this.isAiScanning = false;
-
+      this.holdExpandUntil = -1;
+      this.transferExpandUntil = -1;
+      this.aiExpandUntil = -1;
+      this.visionUntil = -1;
+      this.visionKey = "";
       const driftCard = findByName(this.getSceneObject(), "DriftDecisionCard");
-      if (driftCard) {
-        driftCard.enabled = false;
-      }
-
-      this.refreshAllCards();
+      if (driftCard) driftCard.enabled = false;
     });
   }
 
   // ==========================================================================
-  // Display Refresh Loops
+  // Station view models (what each pill should say right now)
   // ==========================================================================
 
-  private refreshPrepCard(): void {
-    if (!this.prepBlueprint) return;
-    const slices = this.prepBlueprint.getSliceIndex();
-    const total = 8;
-    const pct = Math.round(this.prepBlueprint.getFillRatio() * 100);
-    const isComplete = this.prepBlueprint.isComplete();
+  private skilletView(): StationView {
+    const sRem = this.dag ? this.dag.getSkilletRemaining() : 60;
+    const t = formatMMSS(sRem);
+    if (this.isPlated) {
+      return { metric: "SALMON DONE", action: "REST, THEN PLATE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
+    }
+    if (this.isAiScanning) {
+      return { metric: "AI SCANNING", action: "HOLD PAN STILL", accent: COLOR_VIOLET_AI, metricColor: COLOR_VIOLET_AI, expanded: true, key: "scan" };
+    }
+    if (this.visionKey !== "" && this.clock < this.visionUntil) {
+      return { metric: this.visionMetric, action: this.visionAction, accent: this.visionAccent, metricColor: this.visionAccent, expanded: true, key: this.visionKey };
+    }
+    if (this.aiLatestMessage && this.clock < this.aiExpandUntil) {
+      return { metric: `SEAR ${t}`, action: this.aiLatestMessage.toUpperCase(), accent: COLOR_VIOLET_AI, metricColor: COLOR_TEXT_HEADING, expanded: true, key: "ai:" + this.aiLatestMessage };
+    }
+    if (this.isDriftActive) {
+      return { metric: `SEAR ${t}`, action: "LOWER BURNER NOW", accent: COLOR_CORAL_ALERT, metricColor: COLOR_CORAL_ALERT, expanded: true, key: "drift" };
+    }
+    if (this.isHeld) {
+      return { metric: `HOLD ${t}`, action: "BURNER LOW - HELD", accent: COLOR_CYAN_PREP, metricColor: COLOR_CYAN_PREP, expanded: this.clock < this.holdExpandUntil, key: "held" };
+    }
+    if (sRem > 0 && sRem <= 10) {
+      return { metric: `SEAR ${t}`, action: sRem <= 3 ? "FLIP NOW" : "READY TO FLIP", accent: COLOR_GOLD_HEAT, metricColor: COLOR_GOLD_HEAT, expanded: true, key: "flip" };
+    }
+    return { metric: `SEAR ${t}`, action: "FLIP AT ZERO", accent: COLOR_GOLD_HEAT, metricColor: COLOR_TEXT_HEADING, expanded: this.clock < this.holdExpandUntil, key: "sear" };
+  }
 
+  private sauceView(): StationView {
+    const pRem = this.dag ? this.dag.getSaucepotRemaining() : 50;
+    const t = formatMMSS(pRem);
+    if (this.isPlated) {
+      return { metric: "SAUCE DONE", action: "SPOON OVER SALMON", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
+    }
+    if (this.isDriftActive) {
+      const n = Math.ceil(Math.max(0, this.autoApplyCountdown));
+      return {
+        metric: `${t} +25s`,
+        action: this.autoApplyCountdown > 0 ? `START SHIFTS IN ${n}s` : "START DEFERRED",
+        accent: COLOR_VIOLET_AI,
+        metricColor: COLOR_VIOLET_AI,
+        expanded: true,
+        key: "drift",
+      };
+    }
+    if (this.isPrepTransferred) {
+      const fresh = this.clock < this.transferExpandUntil;
+      return { metric: `SIMMER ${t}`, action: "SHALLOTS IN - STIR", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: fresh, key: "simmer" };
+    }
+    return { metric: `SAUCE ${t}`, action: "WAITS ON PREP", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: false, key: "wait" };
+  }
+
+  private prepView(): StationView {
+    const slices = this.prepBlueprint ? this.prepBlueprint.getSliceIndex() : 0;
+    const pct = this.prepBlueprint ? Math.round(this.prepBlueprint.getFillRatio() * 100) : 0;
+    const isComplete = this.prepBlueprint ? this.prepBlueprint.isComplete() : false;
     if (this.isPlated || this.isPrepTransferred) {
-      if (this.prepBadgeText) {
-        this.prepBadgeText.text = "PREP · COMPLETE";
-        this.prepBadgeText.textFill.color = COLOR_EMERALD_DONE;
+      return { metric: "PREP CLEAR", action: "BOARD DONE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "clear" };
+    }
+    if (this.isDriftActive) {
+      return { metric: `CUT ${slices}/8  +25s`, action: "KEEP SLICING", accent: COLOR_CORAL_ALERT, metricColor: COLOR_CORAL_ALERT, expanded: true, key: "drift" };
+    }
+    if (isComplete) {
+      return { metric: "PORTION 100%", action: "TAP TRANSFER", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: true, key: "ready" };
+    }
+    const metric = pct > 0 ? `CUT ${slices}/8 - ${pct}%` : `CUT ${slices}/8`;
+    return { metric, action: "SLICE ON GUIDES", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: true, key: "cut" };
+  }
+
+  // ==========================================================================
+  // Rendering
+  // ==========================================================================
+
+  private setTextIfChanged(t: Text, s: string): void {
+    if (t.text !== s) t.text = s;
+  }
+
+  private applyView(p: Pill | undefined, v: StationView, force: boolean): void {
+    if (!p) return;
+    if (p.key !== v.key) {
+      if (p.key !== "") p.pulse = 1.0; // attention pop on state change
+      p.key = v.key;
+    }
+    this.setTextIfChanged(p.metricText, v.metric);
+    this.setTextIfChanged(p.actionText, v.action);
+    p.targetH = v.expanded ? PILL_H_EXPANDED : PILL_H_COLLAPSED;
+
+    const accentChanged = !p.accent.equal(v.accent);
+    if (accentChanged || force) {
+      p.accent = v.accent;
+      p.glass.border = withAlpha(v.accent, 0.95);
+      applyGlass(p.glass);
+      if (p.stem) {
+        p.stem.bg = withAlpha(v.accent, 0.75);
+        p.stem.border = withAlpha(v.accent, 0.75);
+        applyGlass(p.stem);
       }
-      if (this.prepProgressText) {
-        this.prepProgressText.text = "TRANSFERRED";
-        this.prepProgressText.textFill.color = COLOR_EMERALD_DONE;
+      if (p.foot) {
+        p.foot.bg = withAlpha(v.accent, 0.95);
+        applyGlass(p.foot);
       }
-      if (this.prepActionText) {
-        this.prepActionText.text = "Board clear • Aromatics in saucepan";
-        this.prepActionText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.prepExplanationText) {
-        this.prepExplanationText.text = "All shallots successfully transferred into saucepan reduction.";
-      }
+    }
+    p.metricColor = v.metricColor;
+    p.metricText.textFill.color = v.metricColor;
+  }
+
+  private layoutPill(p: Pill): void {
+    const h = p.curH;
+    p.glassObj.getTransform().setLocalPosition(new vec3(0, h / 2, 0));
+    p.glass.rr.size = new vec2(PILL_W, h);
+    p.glass.rr.cornerRadius = Math.min(0.6, h / 2);
+
+    const t = Math.max(0, Math.min(1, (h - PILL_H_COLLAPSED) / (PILL_H_EXPANDED - PILL_H_COLLAPSED)));
+    p.metricText.getSceneObject().getTransform().setLocalPosition(new vec3(0, h - PILL_PAD - PILL_METRIC_H / 2, 0.03));
+    const actionObj = p.actionText.getSceneObject();
+    actionObj.getTransform().setLocalPosition(new vec3(0, PILL_PAD + PILL_ACTION_H / 2, 0.03));
+    const show = t > 0.35;
+    if (actionObj.enabled !== show) actionObj.enabled = show;
+    if (show) {
+      p.actionText.textFill.color = withAlpha(p.accent, (t - 0.35) / 0.65);
+    }
+  }
+
+  private animatePill(p: Pill | undefined, dt: number): void {
+    if (!p) return;
+    const diff = p.targetH - p.curH;
+    if (Math.abs(diff) > 0.002) {
+      p.curH += diff * Math.min(1, dt * 9.0);
+      if (Math.abs(p.targetH - p.curH) < 0.004) p.curH = p.targetH;
+      this.layoutPill(p);
+    } else if (p.actionText.getSceneObject().enabled) {
+      p.actionText.textFill.color = p.accent;
+    }
+    if (p.pulse > 0) {
+      p.pulse = Math.max(0, p.pulse - dt * 2.5);
+      const s = 1 + 0.07 * Math.sin(p.pulse * Math.PI);
+      p.root.getTransform().setLocalScale(new vec3(s, s, s));
+    }
+  }
+
+  private refreshChronometer(): void {
+    if (!this.chronoText) return;
+    if (this.isPlated) {
+      this.setTextIfChanged(this.chronoText, "READY TO PLATE");
+      this.chronoText.textFill.color = COLOR_EMERALD_DONE;
       return;
     }
-
-    if (this.isDriftActive) {
-      if (this.prepBadgeText) {
-        this.prepBadgeText.text = "PREP · SLIPPED (+25s)";
-        this.prepBadgeText.textFill.color = COLOR_CORAL_ALERT;
-      }
-      if (this.prepActionText) {
-        this.prepActionText.text = "Continue slicing • Schedule waiting";
-        this.prepActionText.textFill.color = COLOR_CORAL_ALERT;
-      }
-      if (this.prepExplanationText) {
-        this.prepExplanationText.text = "Dicing fell behind. Downstream sauce start deferred +25s automatically.";
-      }
-    } else if (isComplete) {
-      if (this.prepBadgeText) {
-        this.prepBadgeText.text = "PREP · PORTION READY";
-        this.prepBadgeText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.prepActionText) {
-        this.prepActionText.text = "Target volume filled (45 cm³)";
-        this.prepActionText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.prepExplanationText) {
-        this.prepExplanationText.text = "Tap Transfer to launch aromatics into saucepan reduction.";
-      }
-    } else {
-      if (this.prepBadgeText) {
-        this.prepBadgeText.text = "PREP · METRIC CUTTING";
-        this.prepBadgeText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.prepActionText) {
-        this.prepActionText.text = "Slice shallot along 1.5cm guide marks";
-        this.prepActionText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.prepExplanationText) {
-        this.prepExplanationText.text = "Uniform cuts ensure even reduction glaze caramelization.";
-      }
-    }
-
-    if (this.prepProgressText) {
-      this.prepProgressText.text = `Cuts: ${slices}/${total} • ${pct}% Portion`;
-      this.prepProgressText.textFill.color = isComplete ? COLOR_EMERALD_DONE : COLOR_TEXT_HEADING;
-    }
-  }
-
-  private refreshSkilletCard(): void {
-    if (!this.dag) return;
-    const sRem = this.dag.getSkilletRemaining();
-    const isHeld = this.dag.isDagHeld();
-
-    if (this.isPlated) {
-      if (this.skilletBadgeText) {
-        this.skilletBadgeText.text = "SKILLET · COMPLETE";
-        this.skilletBadgeText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.skilletTimerText) {
-        this.skilletTimerText.text = "00:00";
-        this.skilletTimerText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.skilletActionText) {
-        this.skilletActionText.text = "Skin crisped to perfection";
-        this.skilletActionText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.skilletExplanationText) {
-        this.skilletExplanationText.text = "Salmon rested and ready for plating with warm shallot reduction.";
-      }
-    } else if (this.aiLatestMessage) {
-      if (this.skilletBadgeText) {
-        this.skilletBadgeText.text = "AI SENSOR · VERDICT";
-        this.skilletBadgeText.textFill.color = COLOR_GOLD_HEAT;
-      }
-      if (this.skilletTimerText) {
-        this.skilletTimerText.text = formatMMSS(sRem);
-      }
-      if (this.skilletActionText) {
-        this.skilletActionText.text = this.aiLatestMessage;
-        this.skilletActionText.textFill.color = COLOR_GOLD_HEAT;
-      }
-      if (this.skilletExplanationText) {
-        this.skilletExplanationText.text = "RapidRouter Vision confirmed skin crisping profile. Schedule updated.";
-      }
-    } else if (this.isDriftActive) {
-      if (this.skilletBadgeText) {
-        this.skilletBadgeText.text = "SKILLET · ACTIVE HEAT";
-        this.skilletBadgeText.textFill.color = COLOR_CORAL_ALERT;
-      }
-      if (this.skilletTimerText) {
-        this.skilletTimerText.text = formatMMSS(sRem);
-        this.skilletTimerText.textFill.color = COLOR_CORAL_ALERT;
-      }
-      if (this.skilletActionText) {
-        this.skilletActionText.text = "Lower burner to low flame";
-        this.skilletActionText.textFill.color = COLOR_CORAL_ALERT;
-      }
-      if (this.skilletExplanationText) {
-        this.skilletExplanationText.text = "Prep delayed: lower heat to hold. Pan on active heat will never silently pause.";
-      }
-    } else if (isHeld) {
-      if (this.skilletBadgeText) {
-        this.skilletBadgeText.text = "SKILLET · ON HOLD";
-        this.skilletBadgeText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.skilletTimerText) {
-        this.skilletTimerText.text = formatMMSS(sRem);
-        this.skilletTimerText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.skilletActionText) {
-        this.skilletActionText.text = "Low hold verified by cook";
-        this.skilletActionText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.skilletExplanationText) {
-        this.skilletExplanationText.text = "Holding gently while aromatics finish. Timer resumes once prepped.";
-      }
-    } else {
-      if (this.skilletBadgeText) {
-        this.skilletBadgeText.text = "SKILLET · ACTIVE SEARING";
-        this.skilletBadgeText.textFill.color = COLOR_GOLD_HEAT;
-      }
-      if (this.skilletTimerText) {
-        this.skilletTimerText.text = formatMMSS(sRem);
-        this.skilletTimerText.textFill.color = COLOR_TEXT_HEADING;
-      }
-      if (this.skilletActionText) {
-        this.skilletActionText.text = "Flip skin at zero • Invariant Duration";
-        this.skilletActionText.textFill.color = COLOR_GOLD_HEAT;
-      }
-      if (this.skilletExplanationText) {
-        this.skilletExplanationText.text = "Skin crisping over medium-high heat. Sensor monitoring Maillard reaction.";
+    const shifted = this.plateAnchorTargetSec > 400;
+    this.setTextIfChanged(this.chronoText, `PLATE IN ${formatMMSS(this.plateAnchorDisplaySec)}`);
+    this.chronoText.textFill.color = shifted ? COLOR_VIOLET_AI : COLOR_TEXT_HEADING;
+    if (this.chronoGlass) {
+      const want = withAlpha(shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE, 0.95);
+      if (!this.chronoGlass.border.equal(want)) {
+        this.chronoGlass.border = want;
+        applyGlass(this.chronoGlass);
       }
     }
   }
 
-  private refreshSauceCard(): void {
-    if (!this.dag) return;
-    const pRem = this.dag.getSaucepotRemaining();
-
-    if (this.isPlated) {
-      if (this.sauceBadgeText) {
-        this.sauceBadgeText.text = "SAUCE · COMPLETE";
-        this.sauceBadgeText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.sauceTimerText) {
-        this.sauceTimerText.text = "00:00";
-        this.sauceTimerText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.sauceActionText) {
-        this.sauceActionText.text = "Reduction glossy & rich";
-        this.sauceActionText.textFill.color = COLOR_EMERALD_DONE;
-      }
-      if (this.sauceExplanationText) {
-        this.sauceExplanationText.text = "Shallot-lemon glaze reduced to syrupy perfection. Spoon over salmon.";
-      }
-    } else if (this.isDriftActive) {
-      if (this.sauceBadgeText) {
-        this.sauceBadgeText.text = "SAUCE · WAITING ON PREP";
-        this.sauceBadgeText.textFill.color = COLOR_VIOLET_WAITING;
-      }
-      if (this.sauceTimerText) {
-        this.sauceTimerText.text = `${formatMMSS(pRem)} (+25s)`;
-        this.sauceTimerText.textFill.color = COLOR_VIOLET_WAITING;
-      }
-      if (this.sauceActionText) {
-        const remainingCountdown = Math.ceil(Math.max(0, this.autoApplyCountdown));
-        this.sauceActionText.text = this.autoApplyCountdown > 0
-          ? `Waits +25s (Auto-apply in ${remainingCountdown}s)`
-          : "Start deferred +25s";
-        this.sauceActionText.textFill.color = COLOR_VIOLET_WAITING;
-      }
-      if (this.sauceExplanationText) {
-        this.sauceExplanationText.text = "Reduction start delayed to absorb prep slip. Plate anchor shifted to match.";
-      }
-    } else if (this.isPrepTransferred) {
-      if (this.sauceBadgeText) {
-        this.sauceBadgeText.text = "SAUCE · SIMMERING";
-        this.sauceBadgeText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.sauceTimerText) {
-        this.sauceTimerText.text = formatMMSS(pRem);
-        this.sauceTimerText.textFill.color = COLOR_TEXT_HEADING;
-      }
-      if (this.sauceActionText) {
-        this.sauceActionText.text = "Shallots added • Reducing lemon glaze";
-        this.sauceActionText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.sauceExplanationText) {
-        this.sauceExplanationText.text = "Simmering shallots gently over low flame to infuse lemon butter glaze.";
-      }
-    } else {
-      if (this.sauceBadgeText) {
-        this.sauceBadgeText.text = "SAUCE · DEPENDENT STEP";
-        this.sauceBadgeText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.sauceTimerText) {
-        this.sauceTimerText.text = formatMMSS(pRem);
-        this.sauceTimerText.textFill.color = COLOR_TEXT_HEADING;
-      }
-      if (this.sauceActionText) {
-        this.sauceActionText.text = "Awaiting shallots from prep board";
-        this.sauceActionText.textFill.color = COLOR_CYAN_PREP;
-      }
-      if (this.sauceExplanationText) {
-        this.sauceExplanationText.text = "Sauce start window held until diced aromatics arrive from cutting board.";
-      }
-    }
-  }
-
-  private refreshAllCards(): void {
-    this.refreshPrepCard();
-    this.refreshSkilletCard();
-    this.refreshSauceCard();
+  private refreshAll(force: boolean = false): void {
+    this.applyView(this.skilletPill, this.skilletView(), force);
+    this.applyView(this.saucePill, this.sauceView(), force);
+    this.applyView(this.prepPill, this.prepView(), force);
+    this.refreshChronometer();
   }
 
   private onUpdate(): void {
     const dt = getDeltaTime();
+    this.clock += dt;
 
     if (this.startFrameWarmup < 8) {
+      // UIKit shapes initialise on OnStart; re-assert styles for a few frames.
       this.startFrameWarmup++;
-      this.applyAllCardStyles();
+      this.applyAllGlass();
     }
 
-    // 1. Auto-apply countdown clock for drift
     if (this.autoApplyCountdown > 0) {
       this.autoApplyCountdown -= dt;
       if (this.autoApplyCountdown <= 0) {
@@ -1319,30 +1073,30 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       }
     }
 
-    // 2. Smoothly animate Plate Anchor time slide (06:40 -> 07:05)
     if (this.plateAnchorDisplaySec !== this.plateAnchorTargetSec) {
       const diff = this.plateAnchorTargetSec - this.plateAnchorDisplaySec;
       this.plateAnchorDisplaySec += diff * Math.min(1.0, dt * 3.5);
-      if (Math.abs(diff) < 0.2) {
-        this.plateAnchorDisplaySec = this.plateAnchorTargetSec;
-      }
-      if (this.plateAnchorTimeText && !this.isPlated) {
-        this.plateAnchorTimeText.text = `Plate in ${formatMMSS(this.plateAnchorDisplaySec)}`;
-        this.plateAnchorTimeText.textFill.color = this.isDriftActive ? COLOR_VIOLET_WAITING : COLOR_TEXT_HEADING;
-      }
+      if (Math.abs(diff) < 0.2) this.plateAnchorDisplaySec = this.plateAnchorTargetSec;
     }
 
-    // 3. AI Scanline timer
     if (this.isAiScanning) {
       this.aiScanTimer -= dt;
-      if (this.aiScanTimer <= 0) {
-        this.isAiScanning = false;
-        this.refreshSkilletCard();
-      }
+      if (this.aiScanTimer <= 0) this.isAiScanning = false;
     }
 
-    // 4. Continuously refresh timers
-    this.refreshSkilletCard();
-    this.refreshSauceCard();
+    this.refreshAll();
+    this.animatePill(this.skilletPill, dt);
+    this.animatePill(this.saucePill, dt);
+    this.animatePill(this.prepPill, dt);
+
+    for (const db of this.directorButtons) {
+      const target = db.pressed ? 0.93 : db.hovered ? 1.06 : 1.0;
+      if (Math.abs(db.scale - target) > 0.001) {
+        db.scale += (target - db.scale) * Math.min(1, dt * 14);
+        // Scale only the neon frame: scaling the Button itself would move its
+        // collider mid-press and could drop hover/trigger events.
+        db.frameObj.getTransform().setLocalScale(new vec3(db.scale, db.scale, 1));
+      }
+    }
   }
 }

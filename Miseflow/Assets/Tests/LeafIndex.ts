@@ -7,6 +7,9 @@ import { VolumetricPortionDomeScenario } from "./VolumetricPortionDomeScenario";
 import { TransferArcScenario } from "./TransferArcScenario";
 import { TimeWarpPlatingScenario } from "./TimeWarpPlatingScenario";
 import { PrepDriftResolverScenario } from "./PrepDriftResolverScenario";
+import { GazeWayfindingBeaconScenario } from "./GazeWayfindingBeaconScenario";
+import { ProposalGateRejectionScenario } from "./ProposalGateRejectionScenario";
+import { SpatulaFlipGuideScenario } from "./SpatulaFlipGuideScenario";
 
 @component
 export class LeafIndex extends BaseScriptComponent {
@@ -35,6 +38,18 @@ export class LeafIndex extends BaseScriptComponent {
     {
       id: "prep-drift-resolver-scenario",
       typename: PrepDriftResolverScenario.getTypeName(),
+    },
+    {
+      id: "gaze-wayfinding-beacon-scenario",
+      typename: GazeWayfindingBeaconScenario.getTypeName(),
+    },
+    {
+      id: "proposal-gate-rejection-scenario",
+      typename: ProposalGateRejectionScenario.getTypeName(),
+    },
+    {
+      id: "spatula-flip-guide-scenario",
+      typename: SpatulaFlipGuideScenario.getTypeName(),
     },
   ];
 

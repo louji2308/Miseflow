@@ -16,7 +16,36 @@ export function makePbrMaterial(
   return m;
 }
 
+/**
+ * Emissive variant for the additive Spectacles display (black = invisible).
+ * simple_pbr exposes its unconnected Emissive port as `Port_Emissive_N006`.
+ */
+export function makeEmissiveMaterial(
+  r: number,
+  g: number,
+  b: number,
+  intensity: number = 0.85,
+  metallic: number = 0.0,
+  roughness: number = 0.3
+): Material {
+  const m = makePbrMaterial(r, g, b, metallic, roughness);
+  try {
+    (m.mainPass as any).Port_Emissive_N006 = new vec3(r * intensity, g * intensity, b * intensity);
+  } catch (e) {
+    // Shader without emissive port: bright base colour still reads on additive display.
+  }
+  return m;
+}
+
 const MAT_CYAN = makePbrMaterial(0.18, 0.86, 0.96, 0.1, 0.22);
+// v4 additive-display palette
+const MAT_LASER_CYAN = makeEmissiveMaterial(0.0, 0.94, 1.0, 1.0);          // #00F0FF cut lines + stove bevel
+const MAT_COUNTER_RIM = makePbrMaterial(0.353, 0.384, 0.439, 0.25, 0.48);  // #5A6270 outer rim / slab body
+const MAT_COUNTER_FIELD = makePbrMaterial(0.235, 0.262, 0.305, 0.30, 0.42); // #3C434E honed top field
+const MAT_STOVE_INSET = makePbrMaterial(0.055, 0.067, 0.086, 0.35, 0.08);  // #0E1116 vitroceramic inset
+const MAT_RIM_AMBER = makeEmissiveMaterial(0.90, 0.58, 0.26, 0.75, 0.6, 0.25); // warm bronze rim light
+const MAT_LED_SEAR = makeEmissiveMaterial(1.0, 0.56, 0.16, 0.9);           // amber sear burner LED
+const MAT_LED_SIMMER = makeEmissiveMaterial(0.30, 0.78, 1.0, 0.9);         // cool simmer burner LED
 const MAT_AMBER = makePbrMaterial(0.98, 0.68, 0.22, 0.1, 0.25);
 const MAT_BLUE = makePbrMaterial(0.32, 0.68, 0.98, 0.1, 0.25);
 const MAT_GREEN = makePbrMaterial(0.24, 0.88, 0.50, 0.1, 0.25);
@@ -25,9 +54,9 @@ const MAT_WOOD = makePbrMaterial(0.72, 0.50, 0.30, 0.02, 0.58);
 const MAT_WOOD_DARK = makePbrMaterial(0.38, 0.24, 0.12, 0.04, 0.62);
 const MAT_SHALLOT_PURPLE = makePbrMaterial(0.58, 0.26, 0.46, 0.05, 0.38);
 const MAT_SHALLOT_CREAM = makePbrMaterial(0.94, 0.88, 0.82, 0.02, 0.42);
-const MAT_CAST_IRON = makePbrMaterial(0.12, 0.13, 0.15, 0.72, 0.62);
-const MAT_SALMON = makePbrMaterial(0.88, 0.38, 0.26, 0.04, 0.42);
-const MAT_SALMON_SKIN = makePbrMaterial(0.62, 0.36, 0.18, 0.14, 0.52);
+const MAT_CAST_IRON = makePbrMaterial(0.26, 0.27, 0.30, 0.62, 0.55);
+const MAT_SALMON = makeEmissiveMaterial(1.0, 0.42, 0.32, 0.22, 0.04, 0.42);      // #FF6B52 coral flesh
+const MAT_SALMON_SKIN = makeEmissiveMaterial(0.85, 0.51, 0.17, 0.18, 0.14, 0.40); // #D9822B golden skin
 const MAT_STEEL = makePbrMaterial(0.90, 0.92, 0.94, 0.88, 0.18);
 const MAT_STEEL_BLADE = makePbrMaterial(0.96, 0.97, 0.99, 0.72, 0.12);
 const MAT_STEEL_BOLSTER = makePbrMaterial(0.85, 0.87, 0.90, 0.78, 0.20);
@@ -42,12 +71,34 @@ const MAT_PORCELAIN = makePbrMaterial(0.98, 0.99, 1.00, 0.02, 0.12);
 const MAT_CERAMIC_WHITE = makePbrMaterial(0.94, 0.95, 0.96, 0.02, 0.20);
 const MAT_SALT = makePbrMaterial(0.96, 0.97, 0.98, 0.02, 0.10);
 const MAT_RUBBER_FOOT = makePbrMaterial(0.08, 0.08, 0.09, 0.02, 0.92);
-const MAT_SEAR_MARK = makePbrMaterial(0.18, 0.14, 0.10, 0.10, 0.72);
+const MAT_SEAR_MARK = makePbrMaterial(0.22, 0.10, 0.04, 0.10, 0.72); // dark Maillard bars
 const MAT_INDUCTION_AMBER = makePbrMaterial(0.96, 0.58, 0.12, 0.05, 0.35);
 const MAT_INDUCTION_COOL = makePbrMaterial(0.22, 0.62, 0.96, 0.05, 0.35);
 const MAT_INDUCTION_EMERALD = makePbrMaterial(0.18, 0.88, 0.52, 0.05, 0.38);
 const MAT_TRANSFER_RIBBON = makePbrMaterial(0.22, 0.86, 0.98, 0.08, 0.18);
 const MAT_RIVET_STEEL = makePbrMaterial(0.82, 0.84, 0.88, 0.80, 0.22);
+// ─── v4 Z-zoned layout (StationsRoot-local cm; root sits at (0,-17.5,-76)) ───
+// Counter slab top is at y = -0.23. Rear row: saucier on the simmer burner.
+// Middle row: skillet (left) + butcher block (right). Front-centre: plate.
+// Compact enough (x -19..18) to fit the narrow Spectacles display crop.
+// Director camera (preview pose) looks down ~36 deg from in front of the counter, pitch -30.
+const COUNTER_CENTER = new vec3(0, -0.65, -3.25);
+const COUNTER_HALF = new vec3(20.0, 0.42, 13.75); // slab x -20..20, z -17..10.5
+const COOKWARE_Y = -0.22;
+const SKILLET_POS = new vec3(-11.2, COOKWARE_Y, -1.5);
+const SKILLET_YAW = -66 * (Math.PI / 180); // swings the long handle to the rear-left
+const SAUCIER_POS = new vec3(0.0, COOKWARE_Y, -10.5);
+const PREP_POS = new vec3(10.5, 0.64, -3.0); // board feet (local -1.27 * 0.68) rest on slab top
+const PLATE_POS = new vec3(0.0, COOKWARE_Y, 4.5);
+// Knife edge sits on cut line 0; MetricPrepBlueprint steps +1.5 per chop (8 chops -> x +3.5),
+// so everything else on the board lives at x >= 4.3 to stay out of the blade sweep.
+const KNIFE_REST_X = -8.5;
+const SLICE_RADIUS = 0.5;
+
+function sliceRestX(i: number): number {
+  return KNIFE_REST_X + 0.75 + i * 1.5; // centred between cut lines i and i+1
+}
+
 const BASE_KNIFE_PITCH = 0.0;
 const BASE_KNIFE_YAW = 10 * (Math.PI / 180);
 const BASE_KNIFE_ROLL = -10 * (Math.PI / 180);
@@ -474,19 +525,19 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const sauceStation = findByName(root, "SaucepotStation");
 
     if (skilletStation) {
-      skilletStation.getTransform().setLocalPosition(new vec3(-12.8, 0, -2.5));
+      skilletStation.getTransform().setLocalPosition(SKILLET_POS);
       skilletStation.getTransform().setLocalScale(new vec3(0.68, 0.68, 0.68));
       this.buildSkilletProps(skilletStation);
     }
 
     if (sauceStation) {
-      sauceStation.getTransform().setLocalPosition(new vec3(0.0, 0.8, -10.5));
+      sauceStation.getTransform().setLocalPosition(SAUCIER_POS);
       sauceStation.getTransform().setLocalScale(new vec3(0.74, 0.74, 0.74));
       this.buildSaucepotProps(sauceStation);
     }
 
     if (prepStation) {
-      prepStation.getTransform().setLocalPosition(new vec3(12.8, 0, -2.5));
+      prepStation.getTransform().setLocalPosition(PREP_POS);
       prepStation.getTransform().setLocalScale(new vec3(0.68, 0.68, 0.68));
       this.buildPrepBoardProps(prepStation);
     }
@@ -511,49 +562,81 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
   private buildKitchenCountertop(root: SceneObject): void {
     // Main dark basalt slate slab — honed, matte Belgian Blue finish
+    // Slab body uses the light #5A6270 rim colour (visible sides + 1.1 cm top border);
+    // a slightly darker honed field sits inset on top. Additive display: nothing near-black.
     const counterObj = this.ensureChild(root, "KitchenCountertopSurface");
-    counterObj.getTransform().setLocalPosition(new vec3(0, -0.65, -6.2));
-    const cRmv = this.ensureRmv(counterObj, MAT_SLATE);
+    counterObj.getTransform().setLocalPosition(COUNTER_CENTER);
+    const cRmv = this.ensureRmv(counterObj, MAT_COUNTER_RIM);
     const cb = createBuilder();
     const cidx: number[] = [];
     let cvi = 0;
-    cvi = addBox(cb, cidx, 0, 0, 0, 20.4, 0.42, 9.8, [1, 1, 1, 1], cvi);
+    cvi = addBox(cb, cidx, 0, 0, 0, COUNTER_HALF.x, COUNTER_HALF.y, COUNTER_HALF.z, [1, 1, 1, 1], cvi);
     cb.appendIndices(cidx);
     cRmv.mesh = cb.getMesh();
     cb.updateMesh();
 
-    // Warm walnut front edge trim — beveled 3mm chamfer profile
+    const topY = COUNTER_HALF.y; // slab top in counter-local space (root y = -0.23)
+    const fieldObj = this.ensureChild(counterObj, "CountertopTopField");
+    const fRmv = this.ensureRmv(fieldObj, MAT_COUNTER_FIELD);
+    const fb = createBuilder();
+    const fidx: number[] = [];
+    addBox(fb, fidx, 0, topY + 0.003, 0, COUNTER_HALF.x - 1.1, 0.003, COUNTER_HALF.z - 1.1, [1, 1, 1, 1], 0);
+    fb.appendIndices(fidx);
+    fRmv.mesh = fb.getMesh();
+    fb.updateMesh();
+
+    // Warm walnut front edge trim
     const edgeObj = this.ensureChild(counterObj, "CountertopFrontEdge");
-    const eRmv = this.ensureRmv(edgeObj, MAT_WOOD_DARK);
+    const eRmv = this.ensureRmv(edgeObj, MAT_WOOD);
     const eb = createBuilder();
     const eidx: number[] = [];
     let evi = 0;
-    evi = addBox(eb, eidx, 0, 0.04, 9.9, 20.4, 0.40, 0.18, [1, 1, 1, 1], evi);
+    evi = addBox(eb, eidx, 0, 0.0, COUNTER_HALF.z + 0.12, COUNTER_HALF.x, COUNTER_HALF.y, 0.12, [1, 1, 1, 1], evi);
     eb.appendIndices(eidx);
     eRmv.mesh = eb.getMesh();
     eb.updateMesh();
 
-    // ─── Flush Vitroceramic Induction Cooktop (2-burner panel) ───────────────
-    // Inset into the slate: black glass panel, zero vertical protrusion
-    const inductionPanel = this.ensureChild(counterObj, "InductionCooktopPanel");
-    inductionPanel.getTransform().setLocalPosition(new vec3(0.0, 0.43, -1.0));
-    const ipRmv = this.ensureRmv(inductionPanel, MAT_VITROCERAMIC);
-    const ipb = createBuilder();
-    const ipidx: number[] = [];
-    let ipvi = 0;
-    // Flush panel slightly above slate (0.01 cm lift so it reads as glass inset)
-    ipvi = addBox(ipb, ipidx, 0, 0.01, 0, 15.8, 0.01, 7.2, [0.06, 0.07, 0.09, 1], ipvi);
-    ipb.appendIndices(ipidx);
-    ipRmv.mesh = ipb.getMesh();
-    ipb.updateMesh();
+    // Legacy single wide induction panel replaced by per-burner insets
+    const legacyPanel = findByName(counterObj, "InductionCooktopPanel");
+    if (legacyPanel) legacyPanel.enabled = false;
 
-    // Burner 1 (Sear/Skillet) — left side, laser-etched graphic + warm amber LED ring
+    // ─── Dark stove insets with thin glowing cyan bevel, centred under cookware ───
+    const searLocal = SKILLET_POS.sub(COUNTER_CENTER);
+    const simmerLocal = SAUCIER_POS.sub(COUNTER_CENTER);
+    this.buildStoveInset(counterObj, "StoveInset_Sear", searLocal.x, topY, searLocal.z, 7.45);
+    this.buildStoveInset(counterObj, "StoveInset_Simmer", simmerLocal.x, topY, simmerLocal.z, 5.25);
+
+    // Burner 1 (Sear/Skillet) — amber LED ring just outside the skillet flare (r 6.9)
     this.ledSearObj = this.buildFlushBurnerGraphic(counterObj, "InductionBurner_Sear",
-      -7.8, 0.44, -1.8, 5.8, MAT_INDUCTION_AMBER, MAT_CAST_IRON);
+      searLocal.x, topY + 0.014, searLocal.z, 7.05, MAT_LED_SEAR, MAT_LED_SEAR);
 
-    // Burner 2 (Simmer/Saucepot) — center, cool white/blue LED ring
+    // Burner 2 (Simmer/Saucier) — cool LED ring just outside the saucier lip (r 4.1)
     this.ledSimmerObj = this.buildFlushBurnerGraphic(counterObj, "InductionBurner_Simmer",
-      0.0, 0.44, -0.8, 5.2, MAT_INDUCTION_COOL, MAT_VITROCERAMIC);
+      simmerLocal.x, topY + 0.014, simmerLocal.z, 4.65, MAT_LED_SIMMER, MAT_LED_SIMMER);
+  }
+
+  /** Round vitroceramic induction inset (dark glass) framed by a thin emissive cyan bevel. */
+  private buildStoveInset(parent: SceneObject, name: string, cx: number, topY: number, cz: number, radius: number): void {
+    const insetObj = this.ensureChild(parent, name);
+    insetObj.getTransform().setLocalPosition(new vec3(cx, topY, cz));
+    const iRmv = this.ensureRmv(insetObj, MAT_STOVE_INSET);
+    const ib = createBuilder();
+    const discProfile: [number, number][] = [
+      [0.0, 0.002],
+      [radius, 0.002],
+      [radius, 0.010],
+      [0.0, 0.010],
+    ];
+    buildLathe(ib, discProfile, 56, [1, 1, 1, 1], 0, 0, 0, 0);
+    iRmv.mesh = ib.getMesh();
+    ib.updateMesh();
+
+    const bevelObj = this.ensureChild(insetObj, `${name}_CyanBevel`);
+    const bRmv = this.ensureRmv(bevelObj, MAT_LASER_CYAN);
+    const bb = createBuilder();
+    buildTube(bb, buildRingCurve(radius, 0.010, 64), 0.075, 6, [1, 1, 1, 1], 0);
+    bRmv.mesh = bb.getMesh();
+    bb.updateMesh();
   }
 
   /**
@@ -579,7 +662,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const outerEtchObj = this.ensureChild(burnerRoot, `${name}_OuterEtch`);
     const oeRmv = this.ensureRmv(outerEtchObj, etchMat);
     const oeb = createBuilder();
-    buildTube(oeb, buildRingCurve(radius, 0, 48), 0.06, 6, [0.28, 0.32, 0.40, 1], 0);
+    buildTube(oeb, buildRingCurve(radius, 0, 48), 0.09, 6, [1, 1, 1, 1], 0);
     oeRmv.mesh = oeb.getMesh();
     oeb.updateMesh();
 
@@ -622,7 +705,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
   private buildPlatingServingStation(root: SceneObject): void {
     const plateRoot = this.ensureChild(root, "PlatingServingStation");
-    plateRoot.getTransform().setLocalPosition(new vec3(0.0, -0.22, 0.5));
+    plateRoot.getTransform().setLocalPosition(PLATE_POS); // front-centre, clear of the saucier
     plateRoot.getTransform().setLocalScale(new vec3(1.0, 1.0, 1.0));
 
     // ─── 1. Restaurant-Grade Fine Porcelain Coupe Plate ─────────────────────
@@ -658,7 +741,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
     // a) Inner dashed saucing pool circle (8 thin arc dashes at radius 2.4 cm)
     const reticleRootObj = this.ensureChild(plateRoot, "PlatingReticleRoot");
-    reticleRootObj.getTransform().setLocalPosition(new vec3(0, 0.22, 0));
+    reticleRootObj.getTransform().setLocalPosition(new vec3(0, 0.30, 0)); // clears the concave dish (was half-buried at 0.22)
     // Store ref for UpdateEvent pulse animation on PLATING_CONVERGENCE
     this.reticleRootObj = reticleRootObj;
     const dashCount = 10;
@@ -770,19 +853,18 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
       // ── Surface AR laser cutting guide grid (flush projected onto board face) ──
       const gridObj = this.ensureChild(boardObj, "CuttingGridLaser");
-      const gridRmv = this.ensureRmv(gridObj, MAT_CYAN);
+      const gridRmv = this.ensureRmv(gridObj, MAT_LASER_CYAN);
       const gb = createBuilder();
       const gidx: number[] = [];
       let gvi = 0;
-      // 9 vertical slice lines every 1.5 cm across the cutting lane
+      // 9 emissive #00F0FF slice lines every 1.5 cm across the cutting lane (thicker for additive display)
       for (let i = 0; i <= 8; i++) {
-        const gx = -7.5 + i * 1.5;
-        // Full-width thin line (0.04 cm wide, barely raised 0.002 cm)
-        gvi = addBox(gb, gidx, gx, 0.902, 1.2, 0.04, 0.002, 3.2, [0.22, 0.86, 0.98, 1], gvi);
+        const gx = KNIFE_REST_X + i * 1.5;
+        gvi = addBox(gb, gidx, gx, 0.912, 1.2, 0.075, 0.012, 3.2, [1, 1, 1, 1], gvi);
       }
       // Two longitudinal guide rails flanking the cutting lane
-      gvi = addBox(gb, gidx, 0, 0.902,  4.4, 8.0, 0.002, 0.035, [0.22, 0.86, 0.98, 1], gvi);
-      gvi = addBox(gb, gidx, 0, 0.902, -2.0, 8.0, 0.002, 0.035, [0.22, 0.86, 0.98, 1], gvi);
+      gvi = addBox(gb, gidx, KNIFE_REST_X + 6.0, 0.910,  4.4, 6.1, 0.010, 0.05, [1, 1, 1, 1], gvi);
+      gvi = addBox(gb, gidx, KNIFE_REST_X + 6.0, 0.910, -2.0, 6.1, 0.010, 0.05, [1, 1, 1, 1], gvi);
       gb.appendIndices(gidx);
       gridRmv.mesh = gb.getMesh();
       gb.updateMesh();
@@ -800,9 +882,13 @@ export class StationPropsBuilder extends BaseScriptComponent {
         [0.22, 2.58],
         [0.0,  2.80],
       ];
+      // Whole bulbs wait on the counter just behind the board, outside the knife's
+      // stepping sweep (knife travels x -7.5..+4.5 along the full blade length).
+      // Board-local y -1.27 == slab top (root y -0.23).
+      const BULB_Y = -1.27;
       let svi = 0;
-      svi = buildLathe(sb, shallotProfile, 20, [1, 1, 1, 1], svi, -7.0, 0.90, -4.5);
-      svi = buildLathe(sb, shallotProfile, 20, [1, 1, 1, 1], svi, -4.6, 0.90, -4.8);
+      svi = buildLathe(sb, shallotProfile, 20, [1, 1, 1, 1], svi, -3.2, BULB_Y, -8.6);
+      svi = buildLathe(sb, shallotProfile, 20, [1, 1, 1, 1], svi, -0.4, BULB_Y, -9.3);
       bulbsRmv.mesh = sb.getMesh();
       sb.updateMesh();
 
@@ -816,51 +902,32 @@ export class StationPropsBuilder extends BaseScriptComponent {
         [0.0,  1.1],
       ];
       let hvi = 0;
-      hvi = buildLathe(hb, sproutProfile, 10, [1, 1, 1, 1], hvi, -7.0, 3.6, -4.5);
-      hvi = buildLathe(hb, sproutProfile, 10, [1, 1, 1, 1], hvi, -4.6, 3.6, -4.8);
+      hvi = buildLathe(hb, sproutProfile, 10, [1, 1, 1, 1], hvi, -3.2, BULB_Y + 2.7, -8.6);
+      hvi = buildLathe(hb, sproutProfile, 10, [1, 1, 1, 1], hvi, -0.4, BULB_Y + 2.7, -9.3);
       sproutsRmv.mesh = hb.getMesh();
       hb.updateMesh();
 
-      // Half-shallot showing concentric purple/cream layers (cut face toward camera)
-      const halfShallotObj = this.ensureChild(boardObj, "ShallotHalfCut");
-      const hsRmv = this.ensureRmv(halfShallotObj, MAT_SHALLOT_CREAM);
-      halfShallotObj.getTransform().setLocalPosition(new vec3(-2.5, 0.90, -3.8));
-      const hsb = createBuilder();
-      const hsidx: number[] = [];
-      let hsvi = 0;
-      // Outer cream layer dome
-      hsvi = addBox(hsb, hsidx, 0, 0.55, 0, 0.90, 0.55, 0.72, [1, 1, 1, 1], hsvi);
-      hsb.appendIndices(hsidx);
-      hsRmv.mesh = hsb.getMesh();
-      hsb.updateMesh();
+      // (v4) The old half-shallot was an axis-aligned cream box that read as a stray
+      // white cube behind the blade; it is intentionally no longer built.
+      const strayCube = findByName(boardObj, "ShallotHalfCut");
+      if (strayCube) strayCube.enabled = false;
 
-      // Concentric inner purple ring of half-shallot
-      const halfInnerObj = this.ensureChild(halfShallotObj, "ShallotHalfInner");
-      const hiRmv = this.ensureRmv(halfInnerObj, MAT_SHALLOT_PURPLE);
-      const hib = createBuilder();
-      const hiidx: number[] = [];
-      let hivi = 0;
-      hivi = addBox(hib, hiidx, 0, 0.48, 0, 0.52, 0.48, 0.42, [1, 1, 1, 1], hivi);
-      hib.appendIndices(hiidx);
-      hiRmv.mesh = hib.getMesh();
-      hib.updateMesh();
-
-      // 8 Sliced Shallot Medallions along the cutting lane
+      // 8 Sliced Shallot Medallions, centred between cut lines (never under the blade)
       this.shallotSlices = [];
       for (let i = 0; i < 8; i++) {
         const sliceObj = this.ensureChild(boardObj, `ShallotSlice_${i}`);
-        const sx = -7.5 + (i + 0.5) * 1.5;
-        sliceObj.getTransform().setLocalPosition(new vec3(sx, 0.90, 1.2));
+        sliceObj.getTransform().setLocalPosition(new vec3(sliceRestX(i), 0.90, 1.2));
         const sliceRmv = this.ensureRmv(
           sliceObj,
           i % 2 === 0 ? MAT_SHALLOT_PURPLE : MAT_SHALLOT_CREAM
         );
         const slb = createBuilder();
+        const r = SLICE_RADIUS;
         const sliceProfile: [number, number][] = [
           [0.0,  0.0 ],
-          [0.58, 0.0 ],
-          [0.62, 0.22],
-          [0.55, 0.44],
+          [r - 0.04, 0.0 ],
+          [r, 0.22],
+          [r - 0.07, 0.44],
           [0.0,  0.44],
         ];
         buildLathe(slb, sliceProfile, 16, [1, 1, 1, 1], 0, 0, 0, 0);
@@ -873,7 +940,8 @@ export class StationPropsBuilder extends BaseScriptComponent {
       // ── Two ceramic pinch ramekins (salt & thyme sprigs) ─────────────────
       // Ramekin 1: coarse sea salt
       const saltRamekinObj = this.ensureChild(boardObj, "RamekinSalt");
-      saltRamekinObj.getTransform().setLocalPosition(new vec3(6.8, 0.90, -3.8));
+      saltRamekinObj.getTransform().setLocalPosition(new vec3(6.6, 0.90, -4.5));
+      saltRamekinObj.getTransform().setLocalScale(new vec3(0.8, 0.8, 0.8)); // r 1.32, no overlap
       const srRmv = this.ensureRmv(saltRamekinObj, MAT_CERAMIC_WHITE);
       const srb = createBuilder();
       const ramekinProfile: [number, number][] = [
@@ -892,16 +960,22 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const saltObj = this.ensureChild(saltRamekinObj, "SaltCrystals");
       const saltRmv = this.ensureRmv(saltObj, MAT_SALT);
       const saltb = createBuilder();
-      const saltidx: number[] = [];
-      let saltvi = 0;
-      saltvi = addBox(saltb, saltidx, 0, 1.24, 0, 1.20, 0.08, 1.20, [0.96, 0.97, 0.98, 1], saltvi);
-      saltb.appendIndices(saltidx);
+      // Round mound that stays inside the ramekin wall (old square slab poked through the rim)
+      const saltProfile: [number, number][] = [
+        [0.0, 0.60],
+        [1.30, 0.60],
+        [1.20, 1.02],
+        [0.70, 1.14],
+        [0.0, 1.18],
+      ];
+      buildLathe(saltb, saltProfile, 20, [0.96, 0.97, 0.98, 1], 0, 0, 0, 0);
       saltRmv.mesh = saltb.getMesh();
       saltb.updateMesh();
 
       // Ramekin 2: fresh thyme sprigs
       const thymeRamekinObj = this.ensureChild(boardObj, "RamekinThyme");
-      thymeRamekinObj.getTransform().setLocalPosition(new vec3(6.8, 0.90, -1.8));
+      thymeRamekinObj.getTransform().setLocalPosition(new vec3(6.6, 0.90, -1.6));
+      thymeRamekinObj.getTransform().setLocalScale(new vec3(0.8, 0.8, 0.8));
       const trRmv = this.ensureRmv(thymeRamekinObj, MAT_CERAMIC_WHITE);
       const trb = createBuilder();
       buildLathe(trb, ramekinProfile, 20, [1, 1, 1, 1], 0, 0, 0, 0);
@@ -926,7 +1000,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
       // Stainless Steel Portion Ramekin Bowl + target rim (volumetric portion station)
       const portionRamekinObj = this.ensureChild(boardObj, "PortionRamekinBowl");
-      portionRamekinObj.getTransform().setLocalPosition(new vec3(6.8, 0.90, 1.2));
+      portionRamekinObj.getTransform().setLocalPosition(new vec3(6.95, 0.90, 3.1));
       const prRmv = this.ensureRmv(portionRamekinObj, MAT_STEEL);
       const prb = createBuilder();
       const portionBowlProfile: [number, number][] = [
@@ -959,7 +1033,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     // 3. Portion Fill Level inside Ramekin (VolumetricPortionDome)
     const domeObj = findByName(prepStation, "VolumetricPortionDome");
     if (domeObj) {
-      domeObj.getTransform().setLocalPosition(new vec3(6.8, 0.95, 1.2));
+      domeObj.getTransform().setLocalPosition(new vec3(6.95, 0.95, 3.1)); // inside PortionRamekinBowl
       domeObj.getTransform().setLocalScale(new vec3(0.4, 0.2, 0.4));
       const dRmv = domeObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
       if (dRmv) {
@@ -980,7 +1054,9 @@ export class StationPropsBuilder extends BaseScriptComponent {
   }
 
   private buildChefKnife(prepStation: SceneObject, laserObj: SceneObject): void {
-    laserObj.getTransform().setLocalPosition(new vec3(-8.0, 0.78, 1.0));
+    // Edge lifted to rest just above the board top (0.90) instead of sinking into it.
+    // Rest x = KNIFE_REST_X = cut line 0 (matches MetricPrepBlueprint.startPositionX in Scene.scene).
+    laserObj.getTransform().setLocalPosition(new vec3(KNIFE_REST_X, 0.93, 1.0));
     laserObj.getTransform().setLocalRotation(quat.quatIdentity());
     laserObj.getTransform().setLocalScale(new vec3(1, 1, 1));
     const lRmv = laserObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
@@ -1222,18 +1298,21 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const panObj = findByName(skilletStation, "SkilletPan");
     if (panObj) {
       panObj.getTransform().setLocalPosition(new vec3(0, 0, 0));
+      panObj.getTransform().setLocalRotation(quat.fromEulerAngles(0, SKILLET_YAW, 0));
       panObj.getTransform().setLocalScale(new vec3(1, 1, 1));
       const pRmv = panObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
       if (pRmv) {
         const pb = createBuilder();
+        // v4: wall lowered 2.5 -> 1.7 so the salmon reads over the front rim from the
+        // elevated director camera.
         const panProfile: [number, number][] = [
           [0.0, 0.0],
           [8.2, 0.0],
-          [9.8, 2.3],
-          [10.2, 2.5],
-          [9.4, 2.5],
-          [8.0, 0.55],
-          [0.0, 0.55],
+          [9.6, 1.5],
+          [10.0, 1.7],
+          [9.3, 1.7],
+          [8.0, 0.45],
+          [0.0, 0.45],
         ];
         buildLathe(pb, panProfile, 28, [1, 1, 1, 1], 0, 0, 0, 0);
         pRmv.mesh = pb.getMesh();
@@ -1246,13 +1325,21 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const hRmv = this.ensureRmv(handleObj, MAT_CAST_IRON);
       const hb = createBuilder();
       const handleCurve: [number, number, number][] = [
-        [-8.8, 1.9, 3.2],
-        [-11.5, 2.2, 4.4],
-        [-14.8, 2.6, 5.8],
+        [-8.9, 1.35, 3.2],
+        [-11.5, 1.75, 4.4],
+        [-14.8, 2.2, 5.8],
       ];
       buildTube(hb, handleCurve, 0.68, 12, [1, 1, 1, 1], 0);
       hRmv.mesh = hb.getMesh();
       hb.updateMesh();
+
+      // Warm bronze rim light tracing the skillet lip (additive-display edge definition)
+      const panRimObj = this.ensureChild(panObj, "SkilletRimLight");
+      const prlRmv = this.ensureRmv(panRimObj, MAT_RIM_AMBER);
+      const prlb = createBuilder();
+      buildTube(prlb, buildRingCurve(9.68, 1.72, 48), 0.17, 6, [1, 1, 1, 1], 0);
+      prlRmv.mesh = prlb.getMesh();
+      prlb.updateMesh();
 
       // Teardrop hanging hole on main handle end
       const hangHoleObj = this.ensureChild(panObj, "SkilletHandleHangHole");
@@ -1260,62 +1347,44 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const hhb = createBuilder();
       const hhidx: number[] = [];
       let hhvi = 0;
-      hhvi = addBox(hhb, hhidx, -14.85, 2.6, 5.8, 0.20, 0.30, 0.04, [0.08, 0.08, 0.09, 1], hhvi);
+      hhvi = addBox(hhb, hhidx, -14.85, 2.2, 5.8, 0.20, 0.30, 0.04, [0.08, 0.08, 0.09, 1], hhvi);
       hhb.appendIndices(hhidx);
       hhRmv.mesh = hhb.getMesh();
       hhb.updateMesh();
 
-      // Dual pour spout notches on the skillet rim (left and right sides, opposite the main handle)
-      // Each pour spout is a shallow V-notch pinch extruded slightly above the rim at +X and -X
-      const pourSpout1Obj = this.ensureChild(panObj, "SkilletPourSpout_L");
-      const ps1Rmv = this.ensureRmv(pourSpout1Obj, MAT_CAST_IRON);
-      const ps1b = createBuilder();
-      const pourSpoutProfile: [number, number][] = [
-        [9.50, 2.40],
-        [9.85, 2.68],
-        [9.90, 2.80],
-        [9.70, 2.80],
-        [9.40, 2.54],
-      ];
-      buildLathe(ps1b, pourSpoutProfile, 4, [1, 1, 1, 1], 0, 0, 0, 0);
-      ps1b.appendIndices([]);
-      ps1Rmv.mesh = ps1b.getMesh();
-      ps1b.updateMesh();
-      // Position at ~90° arc offset from handle (forward-left relative to handle)
-      pourSpout1Obj.getTransform().setLocalRotation(quat.fromEulerAngles(0, 0.52, 0)); // ~30°
+      // (v4) The old "pour spouts" were 4-segment lathes, i.e. full square rings around the
+      // rim that read as a grey wireframe box over the salmon. Removed.
+      for (const legacy of ["SkilletPourSpout_L", "SkilletPourSpout_R"]) {
+        const o = findByName(panObj, legacy);
+        if (o) o.enabled = false;
+      }
 
-      const pourSpout2Obj = this.ensureChild(panObj, "SkilletPourSpout_R");
-      const ps2Rmv = this.ensureRmv(pourSpout2Obj, MAT_CAST_IRON);
-      const ps2b = createBuilder();
-      buildLathe(ps2b, pourSpoutProfile, 4, [1, 1, 1, 1], 0, 0, 0, 0);
-      ps2b.appendIndices([]);
-      ps2Rmv.mesh = ps2b.getMesh();
-      ps2b.updateMesh();
-      pourSpout2Obj.getTransform().setLocalRotation(quat.fromEulerAngles(0, -0.52, 0)); // ~-30°
-
-      // Atlantic Salmon Fillet — enlarged to fill skillet, clearly visible coral-pink
-      // Old: 3.8×0.72×2.0 (too small). New: 5.2×1.10×2.6 positioned centrally
+      // Atlantic Salmon Fillet — rests on the pan floor (y 0.45), body raised ~0.45 cm
+      // so flesh + golden skin clear the lowered front wall.
       const salmonObj = this.ensureChild(panObj, "SalmonFillet");
-      salmonObj.getTransform().setLocalPosition(new vec3(0, 0.55, 0));
+      salmonObj.getTransform().setLocalPosition(new vec3(0, 0.45, 0));
+      // Counter the pan yaw so the fillet still reads left-to-right to the camera (+18 deg)
+      salmonObj.getTransform().setLocalRotation(quat.fromEulerAngles(0, 18 * (Math.PI / 180) - SKILLET_YAW, 0));
+      salmonObj.getTransform().setLocalScale(new vec3(1.45, 1.0, 1.45)); // larger footprint, same thickness
       const sRmv = this.ensureRmv(salmonObj, MAT_SALMON);
       const sb = createBuilder();
       const sidx: number[] = [];
       let svi = 0;
-      // Main fillet body — tapered block (wider at tail, narrower at head)
-      svi = addBox(sb, sidx,  0.6, 0.55,  0.0, 1.8, 0.55, 1.30, [1, 1, 1, 1], svi); // tail half
-      svi = addBox(sb, sidx, -0.8, 0.55,  0.0, 2.0, 0.55, 1.30, [1, 1, 1, 1], svi); // head half wider
-      svi = addBox(sb, sidx,  0.0, 0.55,  0.0, 2.6, 0.55, 1.30, [1, 1, 1, 1], svi); // center bridge
+      // Main fillet body — tapered block (wider at head, narrower at tail), 1.6 cm thick
+      svi = addBox(sb, sidx,  0.6, 0.80,  0.0, 1.8, 0.80, 1.30, [1, 1, 1, 1], svi); // tail half
+      svi = addBox(sb, sidx, -0.8, 0.80,  0.0, 2.0, 0.80, 1.30, [1, 1, 1, 1], svi); // head half wider
+      svi = addBox(sb, sidx,  0.0, 0.80,  0.0, 2.6, 0.80, 1.30, [1, 1, 1, 1], svi); // center bridge
       sb.appendIndices(sidx);
       sRmv.mesh = sb.getMesh();
       sb.updateMesh();
 
-      // Crispy seared skin — golden-brown top cap, clearly offset from pink flesh
+      // Crispy seared skin — golden #D9822B cap on top of the coral flesh
       const skinObj = this.ensureChild(salmonObj, "SalmonCrispySkin");
       const skRmv = this.ensureRmv(skinObj, MAT_SALMON_SKIN);
       const skb = createBuilder();
       const skidx: number[] = [];
       let skvi = 0;
-      skvi = addBox(skb, skidx, 0, 1.12, 0, 2.55, 0.18, 1.25, [1, 1, 1, 1], skvi);
+      skvi = addBox(skb, skidx, 0, 1.72, 0, 2.55, 0.13, 1.25, [1, 1, 1, 1], skvi);
       skb.appendIndices(skidx);
       skRmv.mesh = skb.getMesh();
       skb.updateMesh();
@@ -1324,58 +1393,50 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const herbObj = this.ensureChild(salmonObj, "HerbSprig");
       const herbRmv = this.ensureRmv(herbObj, MAT_HERB);
       const hrb = createBuilder();
+      // Herb sprig laid along the tail end, on top of the skin (skin top = 1.85)
       const herbCurve: [number, number, number][] = [
-        [-2.2, 1.42, -0.5],
-        [ 0.0, 1.55,  0.1],
-        [ 2.2, 1.42,  0.6],
+        [ 1.55, 1.98, -0.95],
+        [ 1.95, 2.04,  0.0 ],
+        [ 1.70, 1.98,  0.95],
       ];
-      buildTube(hrb, herbCurve, 0.20, 8, [1, 1, 1, 1], 0);
+      buildTube(hrb, herbCurve, 0.16, 8, [1, 1, 1, 1], 0);
       herbRmv.mesh = hrb.getMesh();
       hrb.updateMesh();
+
+      // 3 dark Maillard bars across the golden skin (children of the fillet so they follow it)
+      const searNames = ["SearMark_A1", "SearMark_A2", "SearMark_B1"];
+      const searX = [-1.7, -0.55, 0.6];
+      for (let i = 0; i < 3; i++) {
+        const legacy = findByName(panObj, searNames[i]);
+        if (legacy && legacy.getParent() !== salmonObj) legacy.enabled = false;
+        const markObj = this.ensureChild(salmonObj, `${searNames[i]}_v4`);
+        markObj.getTransform().setLocalPosition(new vec3(searX[i], 1.865, 0));
+        markObj.getTransform().setLocalRotation(quat.fromEulerAngles(0, 22 * (Math.PI / 180), 0));
+        const mRmv = this.ensureRmv(markObj, MAT_SEAR_MARK);
+        const mb = createBuilder();
+        const midx: number[] = [];
+        addBox(mb, midx, 0, 0, 0, 0.17, 0.025, 1.12, [1, 1, 1, 1], 0);
+        mb.appendIndices(midx);
+        mRmv.mesh = mb.getMesh();
+        mb.updateMesh();
+      }
     }
 
-    // 2. Helper tab handle — cast-iron stub opposite main handle
+    // 2. Helper handle — rounded cast-iron loop opposite the main handle, at rim height
+    //    (old version was a rectangular box hovering above the rim)
     const helperTabObj = this.ensureChild(panObj!, "SkilletHelperTab");
     const htRmv = this.ensureRmv(helperTabObj, MAT_CAST_IRON);
     const htb = createBuilder();
-    const htidx: number[] = [];
-    let htvi = 0;
-    // Small rectangular tab at +X side, just below rim
-    htvi = addBox(htb, htidx, 9.6, 2.1, 0, 1.1, 0.38, 0.82, [1, 1, 1, 1], htvi);
-    htb.appendIndices(htidx);
+    const helperCurve: [number, number, number][] = [
+      [ 9.55, 1.50, -1.0],
+      [10.70, 1.60, -0.75],
+      [11.15, 1.64,  0.0],
+      [10.70, 1.60,  0.75],
+      [ 9.55, 1.50,  1.0],
+    ];
+    buildTube(htb, helperCurve, 0.26, 8, [1, 1, 1, 1], 0);
     htRmv.mesh = htb.getMesh();
     htb.updateMesh();
-
-    // 3. Maillard sear marks on salmon — diagonal cross-hatch bars
-    const sear1Obj = this.ensureChild(panObj!, "SearMark_A1");
-    const sm1Rmv = this.ensureRmv(sear1Obj, MAT_SEAR_MARK);
-    const sm1b = createBuilder();
-    const sm1idx: number[] = [];
-    let sm1vi = 0;
-    sm1vi = addBox(sm1b, sm1idx, -1.2, 1.70, 0, 0.14, 0.06, 1.6, [1, 1, 1, 1], sm1vi);
-    sm1b.appendIndices(sm1idx);
-    sm1Rmv.mesh = sm1b.getMesh();
-    sm1b.updateMesh();
-
-    const sear2Obj = this.ensureChild(panObj!, "SearMark_A2");
-    const sm2Rmv = this.ensureRmv(sear2Obj, MAT_SEAR_MARK);
-    const sm2b = createBuilder();
-    const sm2idx: number[] = [];
-    let sm2vi = 0;
-    sm2vi = addBox(sm2b, sm2idx, 0.8, 1.70, 0, 0.14, 0.06, 1.6, [1, 1, 1, 1], sm2vi);
-    sm2b.appendIndices(sm2idx);
-    sm2Rmv.mesh = sm2b.getMesh();
-    sm2b.updateMesh();
-
-    const sear3Obj = this.ensureChild(panObj!, "SearMark_B1");
-    const sm3Rmv = this.ensureRmv(sear3Obj, MAT_SEAR_MARK);
-    const sm3b = createBuilder();
-    const sm3idx: number[] = [];
-    let sm3vi = 0;
-    sm3vi = addBox(sm3b, sm3idx, 0, 1.70, -0.8, 3.4, 0.06, 0.14, [1, 1, 1, 1], sm3vi);
-    sm3b.appendIndices(sm3idx);
-    sm3Rmv.mesh = sm3b.getMesh();
-    sm3b.updateMesh();
 
     // 4. Suppress floating torus rings — these are replaced by flush induction graphics on countertop
     const midRing = findByName(skilletStation, "MiddleRing");
@@ -1409,20 +1470,23 @@ export class StationPropsBuilder extends BaseScriptComponent {
         const pb = createBuilder();
         // Proper saucier: gently curved bottom, straight cylindrical walls, outward flared rim
         // r max = 5.2 (outer), wall height = 9.2 — looks like real 2qt saucier
+        // v4: wall height 9.1 -> 5.1 (real saucier: wide + shallow, rounded belly) so the
+        // golden reduction is visible from the elevated director camera.
         const potProfile: [number, number][] = [
           [0.0, 0.00],  // center base
-          [2.2, 0.10],  // base curve start
-          [4.0, 0.40],  // base curve midpoint
-          [4.8, 0.85],  // base-to-wall transition
-          [5.0, 2.50],  // lower wall
-          [5.1, 5.00],  // mid wall
-          [5.2, 7.80],  // upper wall
-          [5.5, 8.60],  // outward flare
-          [5.6, 9.00],  // rolled lip peak
-          [5.3, 9.10],  // lip inner shoulder
-          [5.0, 8.80],  // inner rim drop
-          [4.8, 7.80],  // inner wall
-          [0.0, 0.50],  // inner base (thick bottom for heat retention)
+          [2.2, 0.06],  // base curve start
+          [4.0, 0.32],  // base curve midpoint
+          [4.8, 0.85],  // rounded belly
+          [5.05, 2.00], // lower wall
+          [5.15, 3.60], // upper wall
+          [5.40, 4.60], // outward flare
+          [5.60, 5.00], // rolled lip peak
+          [5.30, 5.10], // lip inner shoulder
+          [5.00, 4.85], // inner rim drop
+          [4.82, 3.80], // inner wall
+          [4.62, 1.20], // inner belly
+          [3.60, 0.62], // inner base curve
+          [0.0, 0.48],  // inner base
         ];
         buildLathe(pb, potProfile, 36, [1, 1, 1, 1], 0, 0, 0, 0);
         pRmv.mesh = pb.getMesh();
@@ -1434,22 +1498,28 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const handleObj = this.ensureChild(potObj, "SaucepanHandle");
       const hRmv = this.ensureRmv(handleObj, MAT_STEEL);
       const hb = createBuilder();
+      // Handle angled rear-right (35 deg behind +X) so it never crosses the butcher block
+      const HANDLE_YAW = 35 * (Math.PI / 180);
+      const hc = Math.cos(HANDLE_YAW);
+      const hs = Math.sin(HANDLE_YAW);
       const handleCurve: [number, number, number][] = [
-        [ 5.4, 8.80, 0.0],   // starts at rim
-        [ 8.5, 9.20, 0.5],   // sweeps slightly upward
-        [12.5, 9.50, 1.0],   // extends outward
+        [ 5.3 * hc, 4.80, -5.3 * hs],  // starts at rim
+        [ 8.4 * hc, 5.20, -8.4 * hs],  // sweeps slightly upward
+        [11.8 * hc, 5.60, -11.8 * hs], // extends rear-right
       ];
       buildTube(hb, handleCurve, 0.48, 12, [1, 1, 1, 1], 0);
       hRmv.mesh = hb.getMesh();
       hb.updateMesh();
 
-      // Rivets at handle base — updated to new rim height
+      // Rivets at handle base, either side of the handle root
+      const rbx = 5.45 * hc;
+      const rbz = -5.45 * hs;
       const rivet1Obj = this.ensureChild(potObj, "HandleRivet1");
       const r1Rmv = this.ensureRmv(rivet1Obj, MAT_RIVET_STEEL);
       const r1b = createBuilder();
       const r1idx: number[] = [];
       let r1vi = 0;
-      r1vi = addBox(r1b, r1idx, 5.5, 9.0, 0.45, 0.18, 0.18, 0.18, [1, 1, 1, 1], r1vi);
+      r1vi = addBox(r1b, r1idx, rbx + 0.45 * hs, 4.75, rbz + 0.45 * hc, 0.18, 0.18, 0.18, [1, 1, 1, 1], r1vi);
       r1b.appendIndices(r1idx);
       r1Rmv.mesh = r1b.getMesh();
       r1b.updateMesh();
@@ -1459,20 +1529,28 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const r2b = createBuilder();
       const r2idx: number[] = [];
       let r2vi = 0;
-      r2vi = addBox(r2b, r2idx, 5.5, 9.0, -0.45, 0.18, 0.18, 0.18, [1, 1, 1, 1], r2vi);
+      r2vi = addBox(r2b, r2idx, rbx - 0.45 * hs, 4.75, rbz - 0.45 * hc, 0.18, 0.18, 0.18, [1, 1, 1, 1], r2vi);
       r2b.appendIndices(r2idx);
       r2Rmv.mesh = r2b.getMesh();
       r2b.updateMesh();
 
-      // Simmering lemon-shallot reduction — updated to new inner radius 4.75 at y=8.85
+      // Warm bronze rim light on the saucier lip
+      const potRimObj = this.ensureChild(potObj, "SaucierRimLight");
+      const potRimRmv = this.ensureRmv(potRimObj, MAT_RIM_AMBER);
+      const potRimB = createBuilder();
+      buildTube(potRimB, buildRingCurve(5.45, 5.04, 48), 0.12, 6, [1, 1, 1, 1], 0);
+      potRimRmv.mesh = potRimB.getMesh();
+      potRimB.updateMesh();
+
+      // Simmering lemon-shallot reduction — high in the shallow pan so it is visible
       const sauceObj = this.ensureChild(potObj, "SimmeringLemonSauce");
       const sRmv = this.ensureRmv(sauceObj, MAT_SAUCE_ENRICHED);
       const sb = createBuilder();
       const sauceProfile: [number, number][] = [
-        [0.0,  8.85],
-        [4.72, 8.85],
-        [4.72, 9.02],
-        [0.0,  9.02],
+        [0.0,  3.20],
+        [4.76, 3.20],
+        [4.80, 3.42],
+        [0.0,  3.42],
       ];
       buildLathe(sb, sauceProfile, 32, [1, 1, 1, 1], 0, 0, 0, 0);
       sRmv.mesh = sb.getMesh();
@@ -1484,7 +1562,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const plb = createBuilder();
       const plidx: number[] = [];
       let plvi = 0;
-      plvi = addBox(plb, plidx, -5.8, 9.05, 0.0, 0.45, 0.08, 1.0, [1, 1, 1, 1], plvi);
+      plvi = addBox(plb, plidx, -5.75, 5.02, 0.0, 0.40, 0.07, 0.9, [1, 1, 1, 1], plvi);
       plb.appendIndices(plidx);
       plRmv.mesh = plb.getMesh();
       plb.updateMesh();
@@ -1522,13 +1600,22 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const ribbonRmv = this.ensureRmv(ribbonObj, MAT_TRANSFER_RIBBON);
     const rb = createBuilder();
     // Parabolic arc: prep board (X~+12, Y~1, Z~-2) → saucepot (X~0, Y~+5, Z~-10)
-    const arcCurve: [number, number, number][] = [
-      [12.0, 0.8, -2.0],
-      [ 9.0, 4.2, -4.5],
-      [ 5.5, 7.0, -7.2],
-      [ 2.0, 7.4, -9.5],
-      [ 0.0, 5.5, -10.8],
-    ];
+    // Sampled from the same quadratic Bezier the flying shallots use in SpatialTransferArc
+    // (P0 board (11.5,1.2,-2.5) -> P1 (5.5,6.2,-6.5) -> P2 saucier mouth (0,1.6,-10.5)),
+    // so the ribbon and the pieces coincide.
+    // The ribbon lives under SpatialTransferArc (offset from StationsRoot), the pieces under
+    // StationsRoot, so convert into arcRoot-local space.
+    const o = arcRoot.getTransform().getLocalPosition();
+    const arcCurve: [number, number, number][] = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      const u = 1 - t;
+      arcCurve.push([
+        u * u * 11.5 + 2 * u * t * 5.5 + t * t * 0.0 - o.x,
+        u * u * 1.2 + 2 * u * t * 6.2 + t * t * 1.6 - o.y,
+        u * u * -2.5 + 2 * u * t * -6.5 + t * t * -10.5 - o.z,
+      ]);
+    }
     buildTube(rb, arcCurve, 0.22, 8, [0.22, 0.86, 0.98, 0.9], 0);
     ribbonRmv.mesh = rb.getMesh();
     rb.updateMesh();
@@ -1539,9 +1626,9 @@ export class StationPropsBuilder extends BaseScriptComponent {
       const idx = (data && typeof data.sliceIndex === "number" ? data.sliceIndex : 1) - 1;
       if (idx >= 0 && idx < this.shallotSlices.length) {
         const slice = this.shallotSlices[idx];
-        const sx = -8.0 + (idx + 0.5) * 1.5;
-        // Shift cut slice slightly forward to visually show progress
-        slice.getTransform().setLocalPosition(new vec3(sx + 0.35, 0.78, 0.2));
+        // Cut slice falls away from the advancing blade (left) and toward the chef,
+        // staying on the board surface (y 0.90) so nothing sinks into the wood.
+        slice.getTransform().setLocalPosition(new vec3(sliceRestX(idx) - 0.3, 0.90, 2.1));
       }
       this.isKnifeChopping = true;
       this.knifeAnimTimer = 0.0;
@@ -1565,9 +1652,8 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
     this.eventBus.on("RESET_REQUESTED", () => {
       for (let i = 0; i < this.shallotSlices.length; i++) {
-        const sx = -8.0 + (i + 0.5) * 1.5;
         this.shallotSlices[i].getTransform().setLocalScale(new vec3(1, 1, 1));
-        this.shallotSlices[i].getTransform().setLocalPosition(new vec3(sx, 0.76, 1.0));
+        this.shallotSlices[i].getTransform().setLocalPosition(new vec3(sliceRestX(i), 0.90, 1.2));
       }
       if (this.knifeRoot) {
         this.isKnifeChopping = false;

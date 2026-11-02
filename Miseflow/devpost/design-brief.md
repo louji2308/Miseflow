@@ -2,77 +2,85 @@
 status: approved
 ---
 
-# Design brief: Miseflow AR v3.0
+# Design brief: Miseflow AR v4.0
 
-<!-- Approved by the learner. Spatial Kitchen Flow Orchestrator. Ready for CLAD build. -->
+<!-- Approved by the learner. Spatial Kitchen Flow Orchestrator, diegetic rebuild. Ready for CLAD build. -->
 
 ## The one spatial moment
-Standing at your kitchen counter with hands messy and multi-component tasks underway, you slice shallots along a 1.5 cm advisory cutting guideline on your cutting board. When prep runs 25 seconds late, instead of static timers falling out of sync or sounding chaotic alarms, MiseFlow’s **Prep Drift Resolver** recalculates your downstream workflow in real time: sliding the unstarted sauce reduction start window by +25s, protecting your active salmon sear from silent alteration, and surfacing an explainable spatial card (*"Prep slipped +25s. Sauce deferred +25s. Skillet is active: verify burner is low"*). Upon confirming the action hands-free, a 3-second luminous Next Action Conduit guides your gaze to the stove, keeping every station synchronized without touching a screen.
+Standing at your kitchen counter with messy hands and several tasks underway, your prep slips. The **Prep Drift Resolver** answers in the world, not on a screen. When prep slips +25s:
+- An amber conduit pulse travels across the countertop from the cutting board to the saucier.
+- The saucier start-arc slides back by +25s and leaves a ghost arc where it used to start.
+- The active skillet gets an amber/red Heat Guard ring, so the running sear is protected, not silently moved.
+- The chronometer moves from 06:40 to 07:05.
+
+You see what moved, what did not, and why, without touching a screen.
 
 ## Why it belongs on glasses
-- **Shares your view:** The system anchors glanceable status cues and cutting guidelines directly into the physical workspace—on the cutting board, skillet, and saucepot.
-- **Draws in the world at true scale:** World-space status rings and temporary direction conduits live at the stations where physical food and cookware reside, leaving the food and knife paths unobstructed.
-- **Leaves your body free:** SIK pinch-to-press interactions and hand-tracking keep hands off smartphones, tablets, or laptops while handling raw fish, hot pans, and sharp knives.
-- **Why it's better than a phone:** Phones present static, disconnected countdown lists that require touch interaction with wet/greasy hands and fail to adapt when task pacing drifts. MiseFlow orchestrates inter-task dependencies spatially in front of you.
+- **Shares your view:** Status lives on the burners, the counter and above each pan, where you are already looking.
+- **Draws in the world at true scale:** Chrono-rings sit on the burners and conduits run along the counter in centimeters, leaving food and knife paths clear.
+- **Leaves your body free:** SIK pinch and hand tracking keep wet, greasy hands off phones and laptops.
+- **Why it's better than a phone:** A phone shows disconnected countdowns and cannot show a delay travelling from one station to the next. MiseFlow shows the dependency in space.
 
 ## Product or overlay
-- **Type:** World-anchored spatial overlay on physical kitchen stations (`PrepBoardStation`, `SkilletStation`, `SaucepotStation`), with an integrated **3D Rehearsal Mode** providing realistic virtual countertop props (`ButcherBlockBoard`, `ChefSkillet`, `SimmerSaucepot`, virtual salmon) for demonstration inside the Lens Studio Interactive Preview.
-- **What the real version would sense:** Explicit user confirmations and task start/complete events, supported by advisory optical appearance checks (visual browning cues).
-- **Stand-in for the preview:** SIK-driven interactable controls on the cutting board, cookware, and wrist command pill that advance the slicing guide, simulate portion reference accumulation, inject a deterministic +25s prep delay, trigger the temporary 3D Next Action Conduit, and fast-forward demo time. Every interaction is operable via mouse pinch/click and verifiable by LEAF automated test scenarios.
-- **Honest Sensing Boundaries:** The application deliberately avoids uncalibrated claims of mass measurement, autonomous burner control, or optical food-safety thermometry.
+- **Type:** World-anchored spatial overlay on three stations (`PrepBoardStation`, `SkilletStation`, `SaucepotStation`), with a 3D Rehearsal Mode of virtual props (`ButcherBlockBoard`, `ChefSkillet`, `SimmerSaucepot`, virtual salmon) for the Lens Studio Interactive Preview.
+- **What the real version would sense:** Task start and complete confirmations plus advisory optical checks of the sear.
+- **Honest stand-ins (kept obvious in the scene):**
+  - `VisionScanStandIn` cycles on each AI Vision press: `EXTEND_SEAR` 0.89 (approved), `OPTIMAL_CRUST` 0.94 (approved, triggers the spatula guide), `STEAM_OCCLUDED` 0.41 (rejected by the ProposalGate confidence floor of 0.55, schedule untouched). Every result passes through the real `ProposalGate.evaluate`.
+  - The live RapidRouter call is off by default (`RapidRouterVisionService.useLiveRapidRouter = false`).
+  - The prep delay is an injected, deterministic +25s; demo time is accelerated and labelled.
+- **Honest sensing boundaries:** No food-safety thermometry, no mass estimation, no autonomous burner control.
 
 ## Where things live
-- **Where the user is looking during the main task:** Downward at the countertop and stove ($65\text{ cm}–110\text{ cm}$ away, tilted $20^\circ–35^\circ$ below eye level, centered in the binocular overlap zone).
-- **`PrepBoardStation`:** Front-right counter ($80\text{ cm}$ away, $36\text{ cm} \times 24\text{ cm}$ footprint). Contains:
-  - *Advisory Slicing Guide:* Stepping 1.5 cm dice reference.
-  - *Portion Reference Dome:* Visual volume accumulation reference ($45\text{ cm}^3$ equivalent).
-  - *Controls:* `Btn_StepChop`, `Btn_FillPortion`, `Btn_Transfer`.
-- **`SkilletStation`:** $35\text{ cm}$ to the left ($95\text{ cm}$ away, $26\text{ cm}$ diameter). Features contracting station status rings and advisory visual browning check.
-- **`SaucepotStation`:** $25\text{ cm}$ behind the skillet ($110\text{ cm}$ away, $18\text{ cm} \times 18\text{ cm}$ diameter).
-- **`NextActionConduit` (SpatialTransferArc):** 3D parabolic tubular conduit spanning from Prep to Saucepot ($55\text{ cm}$ horizontal span). Dormant until triggered, active for 3.0 seconds, then cleanly dissolves.
-- **`WristCommandPill`:** Anchored to user's non-dominant wrist ($28\text{ cm}$ away, $14\text{ cm} \times 4\text{ cm}$) featuring Rehearsal Mode toggle, +25s Prep Drift toggle, and Demo Time-Warp toggle.
+Diegetic first: status sits on the objects it describes.
+- **Camera:** Pitched about -30 deg, a chef's view down at the counter and stove.
+- **Burner chrono-rings (`DiegeticChronoRing`):** A ring on each burner counts down that station's task and shows a ghost arc when a start has slid.
+- **Counter conduits (`DAGCounterConduit`):** Prep to Sauce, plus a convergence conduit to the plate. Dormant until used, and they carry the amber drift pulse.
+- **Station pills:** Two lines above each piece of cookware (task, then state or next action).
+- **Director HUD:** A compact COOK | SIM panel for the demo controls.
+- **`DiegeticLayer`:** The parent of the diegetic pieces, built at startup by `MiseFlowSpatialUI.ensureHeroComponents`.
+- **Stations:** `PrepBoardStation` front-right, `SkilletStation` to its left, `SaucepotStation` behind the skillet, all inside the 65 to 110 cm binocular zone.
 
 ## Hands and input
-- **Primary Input:** Spectacles Interaction Kit (SIK) pinch-to-press buttons with glowing hover states and clean-plate backing pills.
-- **`Step Chop`:** SIK button on the cutting board advances the slicing reference guideline forward in 1.5 cm increments.
-- **`Fill Portion`:** SIK button on the portion dome simulates ingredient volume accumulation from 0% to 100%.
-- **`Transfer to Pot`:** SIK button on the completed portion dome fires the 3D Next Action Conduit into the saucepot.
-- **`Check Sear`:** SIK button on the skillet triggers the advisory visual browning scan with explicit user confirmation.
-- **`Simulate +25s Drift / Hold`:** SIK toggle triggers the Prep Drift Resolver, recalculating downstream tasks and prompting explainable actions.
-- **`Demo Time-Warp`:** Accelerates the multi-burner countdown with a visible `"DEMO TIME"` indicator so judges can experience the full convergence in a 3-minute video.
-- **Manual Fallback:** 100% of actions are reachable via direct SIK pinch/click in Interactive Preview.
+- **Primary input:** SIK pinch on the Director HUD buttons, with hover glow and backing plates.
+- **Preview keys:** `1`, `3`, `4`, `5`, `6` trigger the demo steps in Interactive Preview (see `MiseFlowSpatialUI` key handler).
+- **Manual fallback:** Every action is reachable by SIK pinch or mouse click in preview and is covered by a LEAF scenario.
 
 ## When things show
-- **Phase 1 (Prep Active):** Slicing guide and portion reference are active (`CryoTeal` `#00E5FF`). Cookware stations remain in standby.
-- **Phase 2 (Drift & Recovery):** When prep slips (+25s), the Prep Drift Resolver shifts unstarted saucepot start window forward, displays the explainable decision prompt, and updates status rings (`AlertCoral` `#FF5252`). The cook confirms hold (`HoldViolet` `#B388FF`).
-- **Phase 3 (Next Action Transition):** When prep completes, the Next Action Conduit activates, pulsing across the counter for 3 seconds into the saucepot, then dissolves cleanly.
-- **Phase 4 (Plating Convergence):** At `00:00`, all active rings lock into their inner golden bezels, and the Plating Debrief Card materializes above the counter (`"3/3 STATIONS SYNCED • READY TO PLATE"`).
+- **Progressive disclosure:** Idle station pills collapse to one line. A pill with an alert expands for about 5 seconds, then collapses.
+- **`GazeEdgeBeacon`:** When a critical station (for example an unresolved heat alert) is more than 20 deg off-centre, an edge arrow points toward it.
+- **`SpatulaTechniqueGuide`:** Appears when the skillet has 10s or less left on an active sear, or when the scan reports `OPTIMAL_CRUST`.
+- **Drift and recovery:** On +25s the conduit pulse, ghost arc and Heat Guard ring appear together and the chronometer moves 06:40 to 07:05.
+- **Plating convergence:** At 00:00 the rings lock and the convergence conduit leads to the plate.
 
 ## Done criteria
-Each one can be checked in Lens Studio's preview by walking around and clicking:
-1. **Station Calibration & Rehearsal Setup:** Spawning the stations on the preview table and toggling Rehearsal Mode displays the 3D cutting board, skillet, and pot with clean-plate 3D labels and zero visual clipping.
-2. **Advisory Slicing Stepping:** Clicking the cutting board's "Step Chop" control advances the slicing guideline in 1.5 cm increments.
-3. **Portion Reference Accumulation:** Clicking "Fill Portion" rises the portion dome accumulation from 0% to 100% and signals ready state.
-4. **Next Action Directional Conduit:** Clicking "Transfer to Pot" triggers the 3D parabolic energy conduit from the cutting board into the saucepot for 3 seconds, updating the saucepot badge to `"DROP SHALLOTS IN POT NOW"`.
-5. **Prep Drift Resolver & Explainable Schedule:** Injecting +25s prep delay defers the unstarted sauce step, protects the active skillet sear from silent mutation, and displays the explainable guidance card.
-6. **Multi-Station Time-Warp & Plating Convergence:** Clicking "Time-Warp" accelerates the rehearsal clock with a visible "DEMO TIME" indicator, showing both status rings contracting in unison and triggering the plating debrief at `00:00`.
+Checked in Lens Studio's preview:
+1. **0 TypeScript errors** on compile.
+2. **9/9 LEAF scenarios pass.** The 6 original (station setup, metric blade stepping, portion dome, transfer arc, time-warp plating, prep-drift resolver) plus `gaze-wayfinding-beacon`, `proposal-gate-rejection` and `spatula-flip-guide`.
+3. **Prep Drift Resolver moment is visible:** amber conduit pulse, saucier ghost arc, skillet Heat Guard ring, chronometer 06:40 to 07:05.
+4. **Gate honesty:** The 0.41 `STEAM_OCCLUDED` scan is rejected and the schedule does not change.
+5. **A 2:50 recording at 1080p** that shows the above end to end.
 
 ## Out of scope
-- Claims of measuring real pan temperature or food safety from RGB cameras.
-- Estimating physical mass/grams from uncalibrated depth maps.
-- Autonomous control over physical kitchen appliances or stove burners.
-- Fully automated knife acoustic transient listening without UI confirmation.
+- Articulated hand rig (SIK pinch only).
+- Real camera sensing of the food (vision is a stand-in).
+- Ramekin drag-pour (skipped).
+- Real pan temperature or food-safety claims from RGB.
+- Mass estimation from uncalibrated depth.
+- Autonomous control of stove burners.
 - Cloud multiplayer or remote AI on the critical timing path.
 
 ## Risks and open questions
-- **Narrow Field of View ($37^\circ \times 32^\circ$):** User cannot see all stations simultaneously without turning their head. (Mitigated by compact local station rings, directional conduit, and glanceable layout within the 1 m binocular overlap zone).
-- **Additive Optical Waveguide Contrast:** Black renders as transparent. (Mitigated by using `#080A0E` 85% alpha clean-plate occluders under high-luminance tokens `#00E5FF`, `#FFB300`, and `#00E676`).
-- **Physical Feel Unproven:** Real hand-tracking fatigue and long-term ergonomic comfort over a hot stove can only be fully evaluated on physical hardware.
+- **Preview camera pose must be reset before recording.** Use `MovePreviewCamera` with position (0, 25.1, -21.4) and lookAt (0, -4.9, -73.4).
+- **Camera Object has DeviceTracking,** so its scene transform is ignored at runtime. Pose comes from the preview camera, not the scene.
+- **`DiegeticLayer` is built at startup** by `MiseFlowSpatialUI.ensureHeroComponents`, so it will not appear in the scene hierarchy until the lens runs.
+- **Narrow field of view (37 x 32 deg):** Mitigated by `GazeEdgeBeacon`, compact pills and a layout inside the 1 m zone.
+- **Additive display:** Black renders as transparent. Use light, high-luminance tokens over dark backing plates.
+- **Physical feel unproven:** Hand fatigue over a hot stove needs real hardware.
 
 ## Build notes for CLAD
-- Build for SPECS so it runs and can be demonstrated in Lens Studio's preview. No SPECS device is available.
-- Use Spectacles Interaction Kit (SIK) and UI Kit for all interactions, so they work with the mouse in Interactive Preview and with LEAF.
-- Build any stand-in exactly as described above, and keep it obvious in the scene.
-- Use real-world scale in centimeters. Keep content inside the user's view during the main task.
-- The display is additive: black renders as transparent. Keep text light and readable from where the user stands.
-- Write LEAF scenarios for each done criterion, run them in preview, and report which pass.
+- Build for SPECS so it runs in Lens Studio's preview. No SPECS device is available.
+- Use SIK and UI Kit for every interaction so they work with the mouse in preview and with LEAF.
+- Keep each stand-in obvious in the scene and labelled honestly.
+- Use real-world scale in centimeters and keep content in view during the main task.
+- The display is additive: keep text light and readable.
+- Write a LEAF scenario for each done criterion, run them in preview, and report which pass.

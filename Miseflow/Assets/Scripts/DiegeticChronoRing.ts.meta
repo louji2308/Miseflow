@@ -1,0 +1,46 @@
+- !<AssetImportMetadata/ec857a2e-ee31-4eab-9b89-121e7fd6ec60>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> ba319f0e-e634-4c29-addb-e7869609b26f
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> ba319f0e-e634-4c29-addb-e7869609b26f
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 4dc895da-55c7-4a25-b458-e74eeb6e8297
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/4dc895da-55c7-4a25-b458-e74eeb6e8297>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: c6445ab0-32b9-41ce-ab36-92c9b2298be6
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    dagController: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - dagController: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input AssignableType_1 dagController
