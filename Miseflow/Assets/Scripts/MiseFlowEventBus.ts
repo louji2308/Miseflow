@@ -18,6 +18,17 @@ export type MiseFlowEventType =
   | "PLATING_CONVERGENCE"
   | "TRIGGER_AI_VISION_PROBE"
   | "AI_VISION_STATE_CHANGED"
+  // WS9 prep visuals (StationPropsBuilder): hook points for Auto Cook / plating
+  | "PREP_VEG_STATE_CHANGED"
+  | "PREP_BOWL_FILLED"
+  // WS9-P2 physical salmon flip (SpatulaTechniqueGuide / SpatulaFlipRig): payload { durationSec }
+  | "SALMON_FLIP_STARTED"
+  | "SALMON_FLIPPED"
+  // WS9-P3: bowl tipped into the saucier; plating tween start/end; Auto Cook state { running, caption, stage }
+  | "PREP_BOWL_POURED"
+  | "PLATING_STARTED"
+  | "DISH_PLATED"
+  | "AUTO_COOK_STATE"
   // Legacy aliases for backward compatibility with SIK interactables
   | "STATION_STEP_COMPLETED"
   | "DAG_HOLD_TOGGLED"

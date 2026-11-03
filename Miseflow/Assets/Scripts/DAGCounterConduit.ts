@@ -358,7 +358,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
     // x <= 11.1, and left of the ramekins, x >= 13.8), back behind the bulbs, then left into the
     // saucier ring (R ~6.6 outside the chrono ticks). Clear of every prop as seen from the
     // director camera.
-    const pts: vec2[] = [new vec2(12.4, -7.4), new vec2(12.4, -13.4), new vec2(5.8, -13.4)];
+    const pts: vec2[] = [new vec2(12.4, -7.4), new vec2(12.4, -13.4), new vec2(5.5, -13.4)]; // WS9: end node touches the tighter saucier arcs (R 5.3)
     this.pTo = pts[2];
     this.pPath = [];
     let acc = 0;
@@ -393,8 +393,8 @@ export class DAGCounterConduit extends BaseScriptComponent {
     const convRoot = global.scene.createSceneObject("Conduit_Convergence");
     convRoot.setParent(this.root);
     const sources: { name: string; p: vec2; ring: number }[] = [
-      { name: "Skillet", p: SKILLET_XZ, ring: 8.2 },
-      { name: "Saucier", p: SAUCIER_XZ, ring: 6.4 },
+      { name: "Skillet", p: SKILLET_XZ, ring: 8.4 }, // WS9: just past the sear arcs (R 8.3)
+      { name: "Saucier", p: SAUCIER_XZ, ring: 5.4 }, // WS9: just past the simmer arcs (R 5.3)
       { name: "Board", p: BOARD_XZ, ring: 3.8 },
     ];
     for (const s of sources) {

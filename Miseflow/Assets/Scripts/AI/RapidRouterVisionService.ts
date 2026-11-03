@@ -2,6 +2,7 @@ import { MiseFlowEventBus } from "../MiseFlowEventBus";
 import { ChoreographyDAG } from "../ChoreographyDAG";
 import { ANTHROPIC_API_KEY } from "./LocalSecrets";
 import { AIProposal, CookingStageStatus, GateEvaluation, ProposalGate } from "./ProposalGate";
+import { CalibratedStage, VisionConfig, VisionStageName } from "./VisionConfig";
 
 export interface RapidRouterConfig {
   apiKey: string;
@@ -28,13 +29,13 @@ export class RapidRouterVisionService extends BaseScriptComponent {
    * VisionScanStandIn through ProposalGate. Turn on to send the probe to Anthropic.
    */
   @input
-  useLiveRapidRouter: boolean = false;
+  useLiveRapidRouter: boolean = VisionConfig.liveByDefault;
 
   private config: RapidRouterConfig = {
     apiKey: ANTHROPIC_API_KEY, // from gitignored LocalSecrets.ts (tools/sync-env.ps1); setApiKey() overrides
-    model: "claude-sonnet-5-5",
-    endpointUrl: "https://api.anthropic.com/v1/messages",
-    timeoutMs: 8000,
+    model: VisionConfig.model,
+    endpointUrl: VisionConfig.endpointUrl,
+    timeoutMs: VisionConfig.timeoutMs,
   };
 
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
@@ -68,7 +69,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
     // Triggered when user taps 'AI Vision' on the Director Palette or via voice / gaze
     this.eventBus.on("TRIGGER_AI_VISION_PROBE", () => {
       // When live mode is off, MiseFlowSpatialUI routes the probe to the local stand-in.
-      if (this.useLiveRapidRouter) this.analyzeSearStage("GOLDEN");
+      if (this.useLiveRapidRouter) this.analyzeSearStage(VisionConfig.probeStage);
     });
   }
 
@@ -78,7 +79,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
    * and conditionally adjusts the active sear schedule.
    */
   public async analyzeSearStage(
-    stage: "RAW" | "GOLDEN" | "CRISP" | "UNSURE",
+    stage: VisionStageName,
     base64Frame?: string
   ): Promise<GateEvaluation> {
     if (this.isRequestInFlight) {
@@ -86,7 +87,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
       return ProposalGate.evaluate(
         {
           source: "RAPIDROUTER_VISION",
-          targetTaskId: "skillet_sear_skin",
+          targetTaskId: VisionConfig.targetTaskId,
           status: "UNSURE",
           confidence: 0.0,
           proposedDeltaSeconds: 0,
@@ -117,7 +118,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
         const root = this.getSceneObject();
         const dag = root.getComponent(ChoreographyDAG.getTypeName()) as ChoreographyDAG;
         if (dag) {
-          dag.proposeCookingExtension("skillet_sear_skin", evaluation.effectiveDeltaSeconds);
+          dag.proposeCookingExtension(VisionConfig.targetTaskId, evaluation.effectiveDeltaSeconds);
           print(`[Anthropic] Schedule updated: +${evaluation.effectiveDeltaSeconds}s added to skillet_sear_skin.`);
         }
       }
@@ -144,7 +145,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
         const root = this.getSceneObject();
         const dag = root.getComponent(ChoreographyDAG.getTypeName()) as ChoreographyDAG;
         if (dag) {
-          dag.proposeCookingExtension("skillet_sear_skin", evaluation.effectiveDeltaSeconds);
+          dag.proposeCookingExtension(VisionConfig.targetTaskId, evaluation.effectiveDeltaSeconds);
           print(`[Anthropic] Schedule updated: +${evaluation.effectiveDeltaSeconds}s added to skillet_sear_skin.`);
         }
       }
@@ -169,7 +170,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
   private unsure(reason: string): AIProposal {
     return {
       source: "RAPIDROUTER_VISION",
-      targetTaskId: "skillet_sear_skin",
+      targetTaskId: VisionConfig.targetTaskId,
       status: "UNSURE",
       confidence: 0.0,
       proposedDeltaSeconds: 0,
@@ -179,41 +180,30 @@ export class RapidRouterVisionService extends BaseScriptComponent {
 
   /** Pure: builds the Anthropic Messages API request body. */
   public buildRequestBody(stage: string, base64Frame?: string): any {
-    const system = `You are MiseFlow AI, a computer vision cooking sensor for Snap Spectacles.
-Analyze the salmon fillet searing in the skillet and report its sear state. Keep rationale to 6 words maximum.`;
+    const system = VisionConfig.systemPrompt;
     const content: any[] = [];
     if (base64Frame) {
       content.push({
         type: "image",
         source: { type: "base64", media_type: "image/jpeg", data: base64Frame },
       });
-      content.push({ type: "text", text: "Inspect skillet camera frame for Maillard reaction and skin crisping." });
+      content.push({ type: "text", text: VisionConfig.userPromptWithFrame });
     } else {
       content.push({
         type: "text",
-        text: `The salmon skin is golden around the edges but center is still pale, sizzling steadily. Stage: ${stage}. Checkpoint is at 40 seconds into the sear.`,
+        text: VisionConfig.userPromptNoFrame.replace("{stage}", stage),
       });
     }
     return {
       model: this.config.model,
-      max_tokens: 600,
+      max_tokens: VisionConfig.maxTokens,
       system: system,
       messages: [{ role: "user", content: content }],
       output_config: {
-        effort: "medium",
+        effort: VisionConfig.effort,
         format: {
           type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              status: { type: "string", enum: ["UNDER", "OPTIMAL", "OVER", "AT_RISK", "UNSURE"] },
-              confidence: { type: "number" },
-              proposedDeltaSeconds: { type: "integer" },
-              rationale: { type: "string" },
-            },
-            required: ["status", "confidence", "proposedDeltaSeconds", "rationale"],
-            additionalProperties: false,
-          },
+          schema: VisionConfig.responseSchema,
         },
       },
     };
@@ -231,13 +221,13 @@ Analyze the salmon fillet searing in the skillet and report its sear state. Keep
         if (blocks[i] && blocks[i].type === "text" && typeof blocks[i].text === "string") text += blocks[i].text;
       }
       const parsed = JSON.parse(this.extractJsonObject(text));
-      const valid = ["UNDER", "OPTIMAL", "OVER", "AT_RISK", "UNSURE"];
+      const valid: string[] = VisionConfig.statuses;
       if (valid.indexOf(parsed.status) < 0 || typeof parsed.confidence !== "number") {
         return this.unsure("Unreadable reply");
       }
       return {
         source: "RAPIDROUTER_VISION",
-        targetTaskId: "skillet_sear_skin",
+        targetTaskId: VisionConfig.targetTaskId,
         status: parsed.status as CookingStageStatus,
         confidence: Math.max(0, Math.min(1, parsed.confidence)),
         proposedDeltaSeconds: typeof parsed.proposedDeltaSeconds === "number" ? parsed.proposedDeltaSeconds : 0,
@@ -265,7 +255,7 @@ Analyze the salmon fillet searing in the skillet and report its sear state. Keep
         method: "POST",
         headers: {
           "x-api-key": this.config.apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": VisionConfig.anthropicVersion,
           "content-type": "application/json",
         },
         body: JSON.stringify(requestBody),
@@ -289,45 +279,16 @@ Analyze the salmon fillet searing in the skillet and report its sear state. Keep
     return text;
   }
 
-  private getCalibratedStageProposal(stage: "RAW" | "GOLDEN" | "CRISP" | "UNSURE"): AIProposal {
-    switch (stage) {
-      case "RAW":
-        return {
-          source: "CHECKPOINT_AUTO",
-          targetTaskId: "skillet_sear_skin",
-          status: "UNDER",
-          confidence: 0.92,
-          proposedDeltaSeconds: 30,
-          rationale: "Flesh pale. Needs +30s",
-        };
-      case "GOLDEN":
-        return {
-          source: "RAPIDROUTER_VISION",
-          targetTaskId: "skillet_sear_skin",
-          status: "UNDER",
-          confidence: 0.85,
-          proposedDeltaSeconds: 15,
-          rationale: "Center pale, needs more time",
-        };
-      case "CRISP":
-        return {
-          source: "RAPIDROUTER_VISION",
-          targetTaskId: "skillet_sear_skin",
-          status: "OPTIMAL",
-          confidence: 0.95,
-          proposedDeltaSeconds: 0,
-          rationale: "Sear optimal. Flip now",
-        };
-      case "UNSURE":
-      default:
-        return {
-          source: "RAPIDROUTER_VISION",
-          targetTaskId: "skillet_sear_skin",
-          status: "UNSURE",
-          confidence: 0.42,
-          proposedDeltaSeconds: 0,
-          rationale: "Steam obscuring view",
-        };
-    }
+  /** OFFLINE FALLBACK: scripted per-stage result from VisionConfig.calibratedStages. */
+  private getCalibratedStageProposal(stage: VisionStageName): AIProposal {
+    const c: CalibratedStage = VisionConfig.calibratedStages[stage] || VisionConfig.calibratedStages.UNSURE;
+    return {
+      source: c.source,
+      targetTaskId: VisionConfig.targetTaskId,
+      status: c.status,
+      confidence: c.confidence,
+      proposedDeltaSeconds: c.proposedDeltaSeconds,
+      rationale: c.rationale,
+    };
   }
 }

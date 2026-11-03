@@ -4,7 +4,10 @@
  *
  * Core Principle: The AI is a sensor proposing adjustments; the deterministic gate decides.
  * No LLM can hallucinate schedule corruption or pause a pan on live heat.
+ * Thresholds live in VisionConfig.ts (single source of truth for the AI Vision path).
  */
+
+import { VisionConfig } from "./VisionConfig";
 
 export type CookingStageStatus = "UNDER" | "OPTIMAL" | "OVER" | "AT_RISK" | "UNSURE";
 
@@ -32,9 +35,9 @@ export interface GateEvaluation {
 }
 
 export class ProposalGate {
-  private static readonly CONFIDENCE_FLOOR = 0.55;
-  private static readonly HIGH_CONFIDENCE_THRESHOLD = 0.80;
-  private static readonly AUTO_APPLY_MAX_EXTENSION_SEC = 30.0;
+  private static readonly CONFIDENCE_FLOOR = VisionConfig.confidenceFloor;
+  private static readonly HIGH_CONFIDENCE_THRESHOLD = VisionConfig.highConfidenceThreshold;
+  private static readonly AUTO_APPLY_MAX_EXTENSION_SEC = VisionConfig.autoApplyMaxExtensionSec;
 
   /**
    * Deterministically evaluates an incoming AI proposal against strict culinary safety rules.
@@ -69,7 +72,7 @@ export class ProposalGate {
       // Shortening an active sear requires human confirmation to prevent burning
       return {
         decision: "REQUIRES_CONFIRM",
-        effectiveDeltaSeconds: Math.max(-20, proposal.proposedDeltaSeconds),
+        effectiveDeltaSeconds: Math.max(VisionConfig.activeHeatShortenCapSec, proposal.proposedDeltaSeconds),
         displayText: "Sear ahead. Flip early?",
         autoApplyCountdownSec: -1,
         requiresCookNotice: true,
@@ -87,7 +90,7 @@ export class ProposalGate {
         decision: "AUTO_APPLY",
         effectiveDeltaSeconds: proposal.proposedDeltaSeconds,
         displayText: `Skin needs +${Math.round(proposal.proposedDeltaSeconds)}s. Auto-applied.`,
-        autoApplyCountdownSec: 3.0,
+        autoApplyCountdownSec: VisionConfig.autoApplyCountdownSec,
         requiresCookNotice: false,
       };
     }
@@ -105,7 +108,7 @@ export class ProposalGate {
 
     // Rule 6: Larger Extension (> 30s) -> Requires explicit cook confirmation
     if (proposal.proposedDeltaSeconds > this.AUTO_APPLY_MAX_EXTENSION_SEC) {
-      const clampedDelta = Math.min(60, proposal.proposedDeltaSeconds);
+      const clampedDelta = Math.min(VisionConfig.largeExtensionCapSec, proposal.proposedDeltaSeconds);
       return {
         decision: "REQUIRES_CONFIRM",
         effectiveDeltaSeconds: clampedDelta,

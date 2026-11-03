@@ -7,10 +7,14 @@ import { MiseFlowEventBus } from "./MiseFlowEventBus";
 import { StationInteractableController } from "./StationInteractableController";
 import { RapidRouterVisionService } from "./AI/RapidRouterVisionService";
 import { VisionScanStandIn } from "./AI/VisionScanStandIn";
+import { VisionConfig } from "./AI/VisionConfig";
 import { GazeEdgeBeacon } from "./GazeEdgeBeacon";
 import { DAGCounterConduit, createWorldIcon, splitMetric, layoutSplitText } from "./DAGCounterConduit";
 import { DiegeticChronoRing } from "./DiegeticChronoRing";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
+import { PlatingFinisher } from "./PlatingFinisher";
+import { AutoCookController } from "./AutoCookController";
+import { MiseFlowButtonTrigger } from "./MiseFlowButtonTrigger";
 
 // ============================================================================
 // MiseFlow v4 "Diegetic Cockpit" — progressive-disclosure spatial UI
@@ -40,6 +44,7 @@ const COLOR_CORAL_ALERT = new vec4(1.0, 0.42, 0.38, 1.0);
 const COLOR_EMERALD_DONE = new vec4(0.24, 0.95, 0.62, 1.0);
 const COLOR_SILVER = new vec4(0.78, 0.84, 0.92, 1.0);
 const COLOR_GLASS = new vec4(0.04, 0.06, 0.1, 1.0);
+const COLOR_AUTO_WHITE_GOLD = new vec4(1.0, 0.9, 0.62, 1.0); // WS9-P3 Auto Cook button (white-gold)
 
 // Camera pose that frames the counter, expressed in StationsRoot-local space
 // (world camera (0,25.1,-21.4) minus StationsRoot (0,-17.5,-76)). Used to make
@@ -209,6 +214,14 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private chronoStr: string = "";
   private directorButtons: DirectorButton[] = [];
   private warpButton?: DirectorButton;
+  private autoButton?: DirectorButton;
+  private autoButtonContent?: ElementContent;
+
+  // WS9-P3 Auto Cook caption / plated dish / flip state
+  private autoCaption: string = "";
+  private isDishReady: boolean = false;
+  private isSalmonFlipped: boolean = false;
+  private isSalmonFlipping: boolean = false;
 
   // State
   private isDriftActive: boolean = false;
@@ -290,6 +303,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       GazeEdgeBeacon.getTypeName(),
       SpatulaTechniqueGuide.getTypeName(),
       VisionScanStandIn.getTypeName(),
+      PlatingFinisher.getTypeName(), // WS9-P3 salmon -> plate, sauce, garnish
+      AutoCookController.getTypeName(), // WS9-P3 Auto Cook director mode
     ]) {
       if (!layer.getComponent(typeName)) layer.createComponent(typeName);
     }
@@ -358,10 +373,27 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     }
   }
 
+  /** WS9-P3: manual actions stand down while Auto Cook runs (Reset / Stop still work). */
+  private manualAllowed(what: string): boolean {
+    if (!AutoCookController.isAutoRunning()) return true;
+    print(`[MiseFlowUI] Auto Cook running: ignoring ${what} (press Stop or Reset first)`);
+    return false;
+  }
+
+  private toggleAutoCook(): void {
+    const auto = AutoCookController.getInstance();
+    if (auto) auto.toggle();
+  }
+
   private bindKeyboardShortcuts(): void {
     this.createEvent("KeyPressEvent").bind((ev: KeyPressEvent) => {
       if (!this.controller) return;
       const key = (ev as any).key ? String((ev as any).key) : "";
+      if (key === "7" || key === "Key_7") {
+        this.toggleAutoCook();
+        return;
+      }
+      if (key !== "0" && key !== "Key_0" && !this.manualAllowed(`key ${key}`)) return;
       if (key === "1" || key === "Key_1") {
         this.controller.onStepChopPressed();
       } else if (key === "2" || key === "Key_2") {
@@ -624,7 +656,9 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const [l, v] = splitMetric(full);
     const left = -12.6 / 2 + 3.0;
     const right = 12.6 / 2 - 0.4;
-    layoutSplitText(this.chronoText, this.chronoValue, l, v, 54, (left + right) / 2, 0, 0.03);
+    // maxW keeps Auto Cook / DISH READY captions right of the divider (PLATE IN mm:ss layout unchanged)
+    const maxW = full.indexOf("PLATE IN") === 0 ? 1000 : right - left - 0.3;
+    layoutSplitText(this.chronoText, this.chronoValue, l, v, 54, (left + right) / 2, 0, 0.03, maxW);
   }
 
   // --------------------------------------------------------------------------
@@ -639,12 +673,14 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     dock.getTransform().setLocalPosition(center);
     dock.getTransform().setLocalRotation(faceCamera(center));
     dock.createComponent("Component.Canvas");
+    // WS9-P3: third AUTO group -> slightly tighter spacing + 0.93 scale keeps the dock inside the Specs crop
+    dock.getTransform().setLocalScale(new vec3(0.93, 0.93, 0.93));
 
-    // v5 capsule dock: COOK chip | Step Cut, Transfer, AI Vision | SIM chip | +25s Drift, 10x Warp, Reset
+    // v5 capsule dock: COOK chip | Step Cut, Transfer, AI Vision | SIM chip | +25s Drift, 10x Warp, Reset | AUTO chip | Auto Cook
     const BTN_H = 1.3;
-    const BTN_GAP = 0.32;
-    const TAG_W = 2.5;
-    const GROUP_GAP = 0.9;
+    const BTN_GAP = 0.26;
+    const TAG_W = 2.1;
+    const GROUP_GAP = 0.7;
     const PAD_X = 0.45;
     const PANEL_H = 2.2;
     const COLOR_NEUTRAL = new vec4(0.62, 0.66, 0.72, 1.0);
@@ -655,22 +691,38 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         tag: "COOK",
         tagColor: COLOR_CYAN_PREP,
         buttons: [
-          { name: "UI_Btn_StepChop", label: "Step Cut", accent: COLOR_NEUTRAL, w: 3.3, onPress: () => { if (this.controller) this.controller.onStepChopPressed(); } },
-          { name: "UI_Btn_Transfer", label: "Transfer", accent: COLOR_NEUTRAL, w: 3.3, onPress: () => { if (this.controller) this.controller.onTransferPressed(); } },
-          { name: "UI_Btn_InspectSear", label: "AI Vision", accent: COLOR_VIOLET_AI, w: 3.5, onPress: () => { this.triggerRealAiVisionScan(); } },
+          { name: "UI_Btn_StepChop", label: "Step Cut", accent: COLOR_NEUTRAL, w: 3.1, onPress: () => { if (this.controller) this.controller.onStepChopPressed(); } },
+          { name: "UI_Btn_Transfer", label: "Transfer", accent: COLOR_NEUTRAL, w: 3.1, onPress: () => { if (this.controller) this.controller.onTransferPressed(); } },
+          { name: "UI_Btn_InspectSear", label: "AI Vision", accent: COLOR_VIOLET_AI, w: 3.2, onPress: () => { this.triggerRealAiVisionScan(); } },
         ],
       },
       {
         tag: "SIM",
         tagColor: COLOR_AMBER_DRIFT,
         buttons: [
-          { name: "UI_Btn_TriggerDrift", label: "+25s Drift", accent: COLOR_AMBER_DRIFT, w: 3.6, onPress: () => { if (this.controller) this.controller.onSimulatePrepDrift(); } },
-          { name: "UI_Btn_TimeWarp", label: "10x Warp", accent: COLOR_EMERALD_DONE, w: 3.5, onPress: () => { if (this.controller) this.controller.onToggleTimeWarpPressed(); } },
-          { name: "UI_Btn_Reset", label: "Reset", accent: COLOR_NEUTRAL, w: 2.9, onPress: () => { if (this.controller) this.controller.onResetPressed(); } },
+          { name: "UI_Btn_TriggerDrift", label: "+25s Drift", accent: COLOR_AMBER_DRIFT, w: 3.4, onPress: () => { if (this.controller) this.controller.onSimulatePrepDrift(); } },
+          { name: "UI_Btn_TimeWarp", label: "10x Warp", accent: COLOR_EMERALD_DONE, w: 3.2, onPress: () => { if (this.controller) this.controller.onToggleTimeWarpPressed(); } },
+          { name: "UI_Btn_Reset", label: "Reset", accent: COLOR_NEUTRAL, w: 2.6, onPress: () => { if (this.controller) this.controller.onResetPressed(); } },
+        ],
+      },
+      {
+        // WS9-P3: Auto Cook runs the whole service start -> plated dish (label turns into "Stop")
+        tag: "AUTO",
+        tagColor: COLOR_GOLD_HEAT,
+        buttons: [
+          { name: "Btn_AutoCook", label: "Auto Cook", accent: COLOR_AUTO_WHITE_GOLD, w: 3.4, onPress: () => { this.toggleAutoCook(); } },
         ],
       },
     ];
-    let panelW = PAD_X * 2 + GROUP_GAP;
+    // manual buttons stand down while Auto Cook runs; Reset (cancels it) and Auto Cook itself stay live
+    for (const g of groups) {
+      for (const b of g.buttons) {
+        if (b.name === "UI_Btn_Reset" || b.name === "Btn_AutoCook") continue;
+        const press = b.onPress;
+        b.onPress = () => { if (this.manualAllowed(b.label)) press(); };
+      }
+    }
+    let panelW = PAD_X * 2 + GROUP_GAP * (groups.length - 1); // one divider gap between groups
     for (const g of groups) {
       panelW += TAG_W + GROUP_GAP * 0.5;
       g.buttons.forEach((b, i) => {
@@ -714,12 +766,18 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         const spec = group.buttons[i];
         const db = this.createDirectorButton(content, spec.name, spec.label, spec.accent, new vec3(x + spec.w / 2, 0, 0), spec.w, BTN_H, spec.onPress);
         if (spec.name === "UI_Btn_TimeWarp") this.warpButton = db;
+        if (spec.name === "Btn_AutoCook") {
+          this.autoButton = db;
+          this.autoButtonContent = db.obj.getComponent(ElementContent.getTypeName()) as ElementContent;
+          // passive trigger: LEAF / automation tap Btn_AutoCook through MiseFlowButtonTrigger.triggerAction
+          db.obj.createComponent(MiseFlowButtonTrigger.getTypeName());
+        }
         x += spec.w + (i < group.buttons.length - 1 ? BTN_GAP : 0);
       }
-      if (gi === 0) {
+      if (gi < groups.length - 1) {
         this.createGlass(
           content,
-          "Director_Divider",
+          gi === 0 ? "Director_Divider" : `Director_Divider_${gi}`,
           new vec3(x + GROUP_GAP / 2, 0, 0),
           new vec2(0.05, PANEL_H - 0.9),
           withAlpha(COLOR_SILVER, 0.6),
@@ -841,11 +899,11 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     }
     if (this.isAiScanning) return;
     this.isAiScanning = true;
-    this.aiScanTimer = 1.2;
-    this.aiExpandUntil = this.clock + 1.2 + EXPAND_PULSE_SEC;
+    this.aiScanTimer = VisionConfig.hudLookingDelaySec;
+    this.aiExpandUntil = this.clock + VisionConfig.hudLookingDelaySec + EXPAND_PULSE_SEC;
 
     if (this.visionService) {
-      this.visionService.analyzeSearStage("GOLDEN").then((evalResult) => {
+      this.visionService.analyzeSearStage(VisionConfig.probeStage).then((evalResult) => {
         this.aiLatestMessage = evalResult.displayText;
         this.aiExpandUntil = this.clock + EXPAND_PULSE_SEC;
       });
@@ -915,7 +973,37 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       this.isDriftActive = false;
     });
 
+    // WS9-P3
+    this.eventBus.on("SALMON_FLIP_STARTED", () => {
+      this.isSalmonFlipping = true;
+    });
+    this.eventBus.on("SALMON_FLIPPED", () => {
+      this.isSalmonFlipping = false;
+      this.isSalmonFlipped = true;
+    });
+    this.eventBus.on("DISH_PLATED", () => {
+      this.isDishReady = true;
+    });
+    this.eventBus.on("AUTO_COOK_STATE", (data: any) => {
+      const running = !!(data && data.running);
+      this.autoCaption = running && data.caption ? String(data.caption) : "";
+      if (this.autoButtonContent) {
+        try {
+          this.autoButtonContent.text = running ? "Stop" : "Auto Cook";
+        } catch (e) {
+          // label refresh is cosmetic
+        }
+      }
+      if (this.autoButton && this.autoButton.latched !== running) {
+        this.autoButton.latched = running;
+        this.styleDirectorButton(this.autoButton);
+      }
+    });
+
     this.eventBus.on("RESET_REQUESTED", () => {
+      this.isDishReady = false;
+      this.isSalmonFlipped = false;
+      this.isSalmonFlipping = false;
       this.isPrepTransferred = false;
       this.isDriftActive = false;
       this.isHeld = false;
@@ -942,6 +1030,9 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private skilletView(): StationView {
     const sRem = this.dag ? this.dag.getSkilletRemaining() : 60;
     const t = formatMMSS(sRem);
+    if (this.isDishReady) {
+      return { metric: "SALMON PLATED", action: "CRISPY SIDE UP", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
+    }
     if (this.isPlated) {
       return { metric: "SALMON DONE", action: "REST, THEN PLATE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
     }
@@ -960,6 +1051,16 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     if (this.isHeld) {
       return { metric: `HOLD ${t}`, action: "BURNER LOW - HELD", accent: COLOR_CYAN_PREP, metricColor: COLOR_CYAN_PREP, expanded: this.clock < this.holdExpandUntil, key: "held" };
     }
+    // WS9-P3: once the spatula has turned the fillet the pill stops asking for a flip
+    if (this.isSalmonFlipping) {
+      return { metric: `SEAR ${t}`, action: "FLIPPING - 45 DEG", accent: COLOR_GOLD_HEAT, metricColor: COLOR_GOLD_HEAT, expanded: true, key: "flipping" };
+    }
+    if (this.isSalmonFlipped) {
+      if (sRem <= 0) {
+        return { metric: "CRUST DONE", action: "READY TO PLATE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: true, key: "crust" };
+      }
+      return { metric: `FLIPPED ${t}`, action: "CRUST SIDE UP", accent: COLOR_EMERALD_DONE, metricColor: COLOR_TEXT_HEADING, expanded: true, key: "flipped" };
+    }
     if (sRem > 0 && sRem <= 10) {
       return { metric: `SEAR ${t}`, action: sRem <= 3 ? "FLIP NOW" : "READY TO FLIP", accent: COLOR_GOLD_HEAT, metricColor: COLOR_GOLD_HEAT, expanded: true, key: "flip" };
     }
@@ -969,6 +1070,9 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private sauceView(): StationView {
     const pRem = this.dag ? this.dag.getSaucepotRemaining() : 50;
     const t = formatMMSS(pRem);
+    if (this.isDishReady) {
+      return { metric: "SAUCE SPOONED", action: "OVER THE SALMON", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
+    }
     if (this.isPlated) {
       return { metric: "SAUCE DONE", action: "SPOON OVER SALMON", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
     }
@@ -1097,21 +1201,39 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
 
   private refreshChronometer(): void {
     if (!this.chronoText) return;
+    // WS9-P3: Auto Cook progress caption takes over the capsule while it runs
+    if (this.autoCaption !== "") {
+      this.setChrono(this.autoCaption);
+      this.chronoText.textFill.color = COLOR_TEXT_HEADING;
+      if (this.chronoValue) this.chronoValue.textFill.color = COLOR_GOLD_HEAT;
+      this.setChronoBorder(COLOR_GOLD_HEAT);
+      return;
+    }
+    if (this.isDishReady) {
+      this.setChrono("DISH READY");
+      this.chronoText.textFill.color = COLOR_EMERALD_DONE;
+      this.setChronoBorder(COLOR_EMERALD_DONE);
+      return;
+    }
     if (this.isPlated) {
       this.setChrono("READY TO PLATE");
       this.chronoText.textFill.color = COLOR_EMERALD_DONE;
+      this.setChronoBorder(COLOR_EMERALD_DONE);
       return;
     }
     const shifted = this.plateAnchorTargetSec > 400;
     this.setChrono(`PLATE IN ${formatMMSS(this.plateAnchorDisplaySec)}`);
     this.chronoText.textFill.color = COLOR_TEXT_HEADING;
     if (this.chronoValue) this.chronoValue.textFill.color = shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE;
-    if (this.chronoGlass) {
-      const want = withAlpha(shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE, 0.95);
-      if (!this.chronoGlass.border.equal(want)) {
-        this.chronoGlass.border = want;
-        applyGlass(this.chronoGlass);
-      }
+    this.setChronoBorder(shifted ? COLOR_VIOLET_AI : COLOR_EMERALD_DONE);
+  }
+
+  private setChronoBorder(c: vec4): void {
+    if (!this.chronoGlass) return;
+    const want = withAlpha(c, 0.95);
+    if (!this.chronoGlass.border.equal(want)) {
+      this.chronoGlass.border = want;
+      applyGlass(this.chronoGlass);
     }
   }
 

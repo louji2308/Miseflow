@@ -10,6 +10,7 @@ import { PrepDriftResolverScenario } from "./PrepDriftResolverScenario";
 import { GazeWayfindingBeaconScenario } from "./GazeWayfindingBeaconScenario";
 import { ProposalGateRejectionScenario } from "./ProposalGateRejectionScenario";
 import { SpatulaFlipGuideScenario } from "./SpatulaFlipGuideScenario";
+import { AutoCookFullFlowScenario } from "./AutoCookFullFlowScenario";
 
 @component
 export class LeafIndex extends BaseScriptComponent {
@@ -50,6 +51,12 @@ export class LeafIndex extends BaseScriptComponent {
     {
       id: "spatula-flip-guide-scenario",
       typename: SpatulaFlipGuideScenario.getTypeName(),
+    },
+    {
+      id: "auto-cook-full-flow",
+      typename: AutoCookFullFlowScenario.getTypeName(),
+      // test-only pacing multiplier for Auto Cook dwell times ("1" = real demo pacing, ~60 s)
+      parameters: { speed: "8" },
     },
   ];
 

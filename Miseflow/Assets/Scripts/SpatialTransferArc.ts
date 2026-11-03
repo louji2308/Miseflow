@@ -94,7 +94,7 @@ export class SpatialTransferArc extends BaseScriptComponent {
 
   private isTransferring: boolean = false;
   private transferProgress: number = 0.0;
-  private readonly transferDuration: number = 1.35; // 1.35s flight time
+  private readonly transferDuration: number = 3.0; // WS9-P3: ribbon guide time (covers the bowl trip)
 
   private isWaitingDependency: boolean = false;
 
@@ -201,21 +201,18 @@ export class SpatialTransferArc extends BaseScriptComponent {
     this.isTransferring = true;
     this.transferProgress = 0.0;
 
-    // Enable transfer arc object for LEAF validation and trajectory guidance
+    // Enable the transfer arc state object for LEAF validation. WS10: it renders nothing (collapsed,
+    // meshes off in StationPropsBuilder.buildTransferConduit); the bowl carrying the food is the only
+    // transfer visual, so no ribbon / guide is drawn.
     if (this.transferArcObject) {
       this.transferArcObject.enabled = true;
     }
 
-    // Enable the parabolic ribbon trail — built by StationPropsBuilder.buildTransferConduit
-    const selfObj = this.getSceneObject();
-    const ribbon = findByName(selfObj, "TransferParabolicRibbon");
-    if (ribbon) ribbon.enabled = true;
-
     for (let i = 0; i < this.flyingPieces.length; i++) {
-      this.flyingPieces[i].enabled = true;
+      this.flyingPieces[i].enabled = false;
     }
 
-    print("[TransferArc] Dynamic Shallot Stream ACTIVE: 7 pieces flying smoothly into Saucepan.");
+    print("[TransferArc] Prep transfer ACTIVE: board -> bowl -> saucier.");
   }
 
   public isTransferActive(): boolean {
@@ -235,11 +232,6 @@ export class SpatialTransferArc extends BaseScriptComponent {
       this.transferArcObject.enabled = false;
     }
 
-    // Hide parabolic ribbon on reset
-    const selfObj = this.getSceneObject();
-    const ribbon = findByName(selfObj, "TransferParabolicRibbon");
-    if (ribbon) ribbon.enabled = false;
-
     for (let i = 0; i < this.flyingPieces.length; i++) {
       this.flyingPieces[i].enabled = false;
     }
@@ -251,7 +243,7 @@ export class SpatialTransferArc extends BaseScriptComponent {
    * P1: High arc peak (5.5, 6.2, -6.5)
    * P2: Saucepan mouth (0.0, 1.6, -10.5)
    */
-  private evaluateArcPoint(t: number): vec3 {
+  public evaluateArcPoint(t: number): vec3 {
     const clampedT = Math.max(0.0, Math.min(1.0, t));
     const u = 1.0 - clampedT;
 
@@ -273,34 +265,15 @@ export class SpatialTransferArc extends BaseScriptComponent {
     const dt = getDeltaTime();
     this.transferProgress += dt / this.transferDuration;
 
-    // Animate each flying shallot with a slight cascade offset
+    // WS9-P3/WS10: no stand-in cubes or ribbon (the bowl carries the real food); the invisible
+    // transfer state stays up for ~transferDuration and then clears.
     const stepOffset = 0.08;
-    for (let i = 0; i < this.flyingPieces.length; i++) {
-      const pieceT = this.transferProgress - i * stepOffset;
-      if (pieceT >= 0.0 && pieceT <= 1.0) {
-        this.flyingPieces[i].enabled = true;
-        const pos = this.evaluateArcPoint(pieceT);
-        this.flyingPieces[i].getTransform().setLocalPosition(pos);
-
-        // Gentle tumbling spin in flight
-        const spinAngle = pieceT * Math.PI * 4.0;
-        this.flyingPieces[i].getTransform().setLocalRotation(
-          quat.fromEulerAngles(spinAngle, spinAngle * 0.7, spinAngle * 0.3)
-        );
-      } else if (pieceT > 1.0) {
-        // Shallot has landed inside the saucepot!
-        this.flyingPieces[i].enabled = false;
-      } else {
-        // Not yet launched
-        this.flyingPieces[i].enabled = false;
-      }
-    }
 
     // Flight finished
     if (this.transferProgress >= 1.0 + this.pieceCount * stepOffset) {
       this.isTransferring = false;
       this.resetTransfer();
-      print("[TransferArc] All shallots successfully landed into sauce reduction. Simmer engaged.");
+      print("[TransferArc] Transfer guide cleared: prep is in the saucier. Simmer engaged.");
     }
   }
 }

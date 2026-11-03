@@ -11,12 +11,45 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 - **DiegeticLayer, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle are built at startup by `MiseFlowSpatialUI.ensureHeroComponents`** (not saved in Scene.scene) – intentional.
 - **Hard invariants:** all 9 LEAF scenarios pass; never rename LEAF-asserted objects/strings (StationsRoot, PrepBoardStation, SkilletStation, SaucepotStation, Prep/Skillet/SaucepotStatusLabel, LaserCutCurtain, VolumetricPortionDome, TransferArcTube, PlatingDebriefCard, DriftDecisionCard, Btn_*, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle; substrings "CHOP SHALLOTS", "CHOP n/8", "PORTION DOME 100%", "PREP TRANSFERRED", "DROP SHALLOTS", "DEFERRED (+25s)", "PLATED", "ALERT: VERIFY BURNER", "HOLD ACKNOWLEDGED", "GATE REJECTED (<0.55)").
 - **Secrets:** never commit keys. Anthropic key lives in repo-root `.env` (ignored); `powershell -File tools\sync-env.ps1` writes the ignored `Assets/Scripts/AI/LocalSecrets.ts`. A key embedded in a Lens is extractable: local preview/recording only, never publish a Lens built with it.
-- **Git:** last commit `00fdcf2` (v4 upgrade). Uncommitted since: Anthropic switch (WS7) + restyle (WS8) + this file. Unrelated untracked files (.agents, .claude, agent/, docs/, debate rooms, *_PLAN.md, skills-lock.json, IDEA & DESIGN.md edits) are the user's – do not commit them unless asked.
+- **Git:** last commit `4dbadbf` (WS7 Anthropic switch + WS8 restyle). WS9 work is uncommitted until the user asks. Unrelated untracked files (.agents, .claude, agent/, docs/, debate rooms, *_PLAN.md, skills-lock.json, IDEA & DESIGN.md edits) are the user's – do not commit them unless asked.
 - **Owner key:** [H]=haiku 5.5 low · [S]=sonnet 5.5 medium · [O]=opus 5.5 high · [ME]=orchestrator
 
 ---
 
 ## Yet to complete
+
+### WS11 – Make AI Vision real (discussion in progress; waiting for the user's choice)
+- [x] Hardcoded vision values centralized in `Assets/Scripts/AI/VisionConfig.ts` (model, endpoint, version, prompts, schema, confidence floor 0.55, caps, scripted `offlineScans`); scripted scans kept ONLY as offline fallback; default `liveByDefault=false`. **NOT yet compiled or LEAF-tested** (haiku could not compile while WS10 runs) → after WS10 finishes: RecompileTypeScriptTool + 10/10 LEAF.
+- [ ] Decide with user: (1) real vision on AI Vision button (frame → claude-sonnet-5-5 → JSON → ProposalGate → DAG), (2) drift re-plan assistant (task graph → Claude → validated re-plan + coaching line), (3) recipe-to-DAG compiler (stretch), (4) voice (skip)
+- [ ] Spike: one live call from Lens Studio preview (does InternetModule fetch work in preview? latency?) with the key from `.env` via `tools\sync-env.ps1`
+- [ ] Devpost page returned 403 to WebFetch and the Devpost connector is unauthenticated; rules/criteria taken from the Drive audit (Design, Technical Implementation, Innovation, Presentation; <3 min preview video; judges don't run the repo)
+
+### WS10 – User feedback after WS9 (screenshot `images/3.png`: blue curved "wire" from board to saucier during transfer)
+- [ ] 1 Remove the wire-like blue ribbon during transfer (TransferArcTube must stay ENABLED for LEAF but be visually invisible; bowl carrying the food is the only visual)
+- [ ] 2 Add steam to the final plated dish
+- [ ] 3 Saucier starts EMPTY (no sauce at start)
+- [ ] 4 Transfer happens twice in sequence: first the measured PORTION (volumetric portion) into the saucier, second the diced VEGETABLES; sauce visibly builds up (base → red sauce with herbs); Btn_Transfer LEAF strings unchanged; Auto Cook updated for the longer transfer; reset empties again
+- [ ] 5 Steam on pan and saucier only in the correct time windows: skillet steam while searing, saucier steam only after ingredients are in until plating tilt; none when idle/empty
+- [ ] 6 Slightly change the colour of the counter base (subtle shift, keep additive-display brightness; report before/after hex)
+- [ ] 7 Recompile 0 errors, 10/10 LEAF, screenshots; update README/design brief mention
+
+### WS9 – User-requested realism + full-flow pass (user request after WS8; image `images/2.png` = skillet close-up showing oversized plate and too-broad burner arcs)
+**WS9 design decisions (follow these):**
+- Veg row on the board, left→right, whole at start, colours exactly as now: red onion (purple), garlic (white/cream), greens/parsley (green), tomato (red), yellow chilli (yellow).
+- The 8 `Step Cut` presses ("CHOP n/8", LaserCutCurtain advances, VolumetricPortionDome fills) convert veg progressively, NOT all at once. Suggested map: cuts 1-2 onion (half-cut then diced), 3 garlic, 4-5 greens, 6-7 tomato, 8 yellow chilli; each cut changes only that veg (whole → partly cut → diced pile, same colour). Reset restores whole veg. LEAF contract unchanged (Btn_StepChop x2 → "CHOP 1/8","CHOP 2/8"; Btn_FillPortion x3 → "PORTION DOME 100%").
+- Bowl (beside board) = prep bowl: after chopping, Transfer sweeps the diced veg board → bowl → into the saucier (existing TransferArcTube/PREP TRANSFERRED/DROP SHALLOTS strings stay).
+- Plate = final plating: when skillet + sauce + prep are done (plating convergence), salmon (seared, flipped) moves onto the plate, sauce is spooned over it, bowl garnish on top; PlatingDebriefCard shows "PLATED". Plate radius reduced.
+- Burner arcs (skillet + saucier): smaller radius, tighter gap between the arc dashes; keep thin broken style.
+- Pan handle and saucier handle: more realistic (tapered, riveted/loop-hole for pan, long steel handle with curve for saucier).
+- Spatula (fish turner): real physical prop with thin angled slotted blade + handle, proper size; animation: slides under the salmon, lifts, ROTATES the fillet 180° in a parabolic arc and lands it flipped (crust side changes), returns. Keeps SpatulaGuideRoot name; hologram arc may stay as subtle guide.
+- New **Auto Cook** button in the Director HUD (own AUTO chip): runs the whole flow automatically start→finish (chop 8 cuts → transfer to bowl/saucier → sear → flip → sauce → plate), then ends with the plated dish. Must stop cleanly on Reset; must not break existing Btn_* names/tests.
+- Then continue polishing one by one (see sub-tasks).
+**Sub-tasks:**
+- [x] P1 props & layout (done: arcs/plate/handles/progressive veg/bowl; 9/9 LEAF; uncommitted)
+- [x] P2 spatula prop + physical flip animation of the salmon (done: SpatulaFlipRig.ts, 3.3 s flip, golden underside, steam burst; 9/9 LEAF; uncommitted)
+- [x] P3 Auto Cook button + full automated sequence + plating + bowl transfer wiring (done: AutoCookController.ts, PlatingFinisher.ts, Btn_AutoCook, scenario 10; 10/10 LEAF; uncommitted)
+- [ ] P4 polish pass (only after user feedback): veg bits are small; "AUTO DISH READY" text; confirm live (non-LEAF) run by user in the preview; Pinch/Poke on HUD buttons is "obstructed by Collider" in preview (pre-existing, not investigated)
+- [ ] Update README storyboard (Auto Cook can replace manual key presses in the recording; key 7 = Auto Cook) and design brief
 
 ### WS8 follow-ups (remaining visual gaps vs `devpost/reference/v4-target-render.webp`, seen in v5_after_*.png)
 - [ ] [O] Plate looks washed-out/translucent grey: give it a solid matte light-grey PBR with a visible rim
@@ -37,7 +70,7 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 - [ ] Record 1080p/60 Preview video, trim to <3:00 (follow README "Recording checklist")
 - [ ] Devpost text: problem, wedge, tech (CLAD, Lens Studio MCP, plan-lens, LEAF 9/9)
 - [ ] Final review pass (correctness + policy reviewers)
-- [ ] Commit WS7/WS8 work
+- [ ] Commit WS9 work when the user asks
 
 ### Open issues / optional
 - [ ] Director HUD hover glow not verified (WS8 may change it)
@@ -49,7 +82,7 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 
 ## In progress
 
-- [ ] [ME] Waiting for the user's go-ahead to commit WS7 + WS8 (not committed yet)
+- [ ] [O] **WS10 – Transfer/steam/base polish** (agent running, code mode): see "WS10" in Yet-to-complete list below for the 5 sub-items. Also pending: user's go-ahead to commit WS9 (+WS10).
 
 ---
 
@@ -88,7 +121,12 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 - [x] `devpost/design-brief.md` rewritten to v4 (both copies identical)
 - [x] v4 work committed as `00fdcf2`
 
-### WS8 – Visual restyle v5 (done, uncommitted; 9/9 LEAF, 0 TS errors)
+### WS9 – realism + full flow (done, uncommitted; 10/10 LEAF, 0 TS errors)
+- [x] P1: burner arcs tight, plate -25%, pan + saucier handles, progressive veg (cuts 1-2 onion, 3 garlic, 4-5 parsley, 6-7 tomato, 8 chilli; whole → partial → diced), prep bowl (empty until Transfer; VolumetricPortionDome hidden until Fill Portion)
+- [x] P2: `SpatulaFlipRig.ts` slotted fish-turner prop (`SpatulaProp`), 3.3 s physical flip of the salmon (golden crust underside), steam burst, events SALMON_FLIP_STARTED/SALMON_FLIPPED, `SpatulaTechniqueGuide.playFlip(onDone)`
+- [x] P3: `AutoCookController.ts` (Btn_AutoCook / key 7 / Stop; ~64-68 s at speed 1: start 2s, 8 chops x1.4s, portion, prep ready, board→bowl→saucier, sear 14s, 10x warp, flip 3.3s, sauce, plating ~6s, dish ready), `PlatingFinisher.ts` (salmon onto plate crust-up, sauce pour, parsley garnish, "DISH READY"), skillet pill FLIPPED/CRUST DONE, scenario 10 `auto-cook-full-flow` (speed param, default 8)
+
+### WS8 – Visual restyle v5 (done, committed 4dbadbf; 9/9 LEAF, 0 TS errors)
 - [x] 6 generated albedo textures in `Assets/Textures/` (brushed slab, end-grain wood, salmon crust, sauce, cast iron, steam) + 5 icons in `Assets/Icons/` + `Assets/Materials/ImageMaterial.mat`
 - [x] `StationPropsBuilder.ts`: textured PBR (`makeTexturedPbr`), bevelled slab, thin broken amber/cyan burner arcs, matte plate, end-grain board with diced veg, black knife handle, salmon fillet + rosemary + steam, sauce with herbs
 - [x] `DiegeticChronoRing.ts` thin arc dashes; `DAGCounterConduit.ts` hairline lines + [LOCKED] lock capsule with leader

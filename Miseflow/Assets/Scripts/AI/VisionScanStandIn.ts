@@ -2,53 +2,18 @@ import { ChoreographyDAG } from "../ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "../MiseFlowEventBus";
 import { makeEmissiveMaterial } from "../StationPropsBuilder";
 import { buildAnnulusMesh, buildUnitQuadMesh, createWorldLabel, faceDirectorCamera, tint } from "../DAGCounterConduit";
-import { AIProposal, CookingStageStatus, GateEvaluation, ProposalGate } from "./ProposalGate";
+import { AIProposal, GateEvaluation, ProposalGate } from "./ProposalGate";
+import { ScanScript, VisionConfig, VisionScanId as ConfigVisionScanId } from "./VisionConfig";
 
-export type VisionScanId = "EXTEND_SEAR" | "OPTIMAL_CRUST" | "STEAM_OCCLUDED";
+export type VisionScanId = ConfigVisionScanId;
 
-interface ScanScript {
-  id: VisionScanId;
-  status: CookingStageStatus;
-  confidence: number;
-  proposedDeltaSeconds: number;
-  rationale: string;
-  // Salmon look while this state is shown (flesh, skin) - linear RGB
-  flesh: [number, number, number];
-  skin: [number, number, number];
-}
+/**
+ * The scripted culinary states, cycled in this order by the AI Vision button.
+ * OFFLINE FALLBACK: data lives in VisionConfig.offlineScans (kept for LEAF tests and the recording).
+ */
+export const VISION_SCRIPT: ScanScript[] = VisionConfig.offlineScans;
 
-/** The three scripted culinary states, cycled in this order by the AI Vision button. */
-export const VISION_SCRIPT: ScanScript[] = [
-  {
-    id: "EXTEND_SEAR",
-    status: "UNDER",
-    confidence: 0.89,
-    proposedDeltaSeconds: 15,
-    rationale: "Centre pale, skin soft",
-    flesh: [1.0, 0.55, 0.5],
-    skin: [0.95, 0.72, 0.42],
-  },
-  {
-    id: "OPTIMAL_CRUST",
-    status: "OPTIMAL",
-    confidence: 0.94,
-    proposedDeltaSeconds: 0,
-    rationale: "Even golden crust",
-    flesh: [1.0, 0.45, 0.3],
-    skin: [0.8, 0.42, 0.1],
-  },
-  {
-    id: "STEAM_OCCLUDED",
-    status: "UNDER",
-    confidence: 0.41,
-    proposedDeltaSeconds: 20,
-    rationale: "Steam hides the skin",
-    flesh: [0.82, 0.74, 0.74],
-    skin: [0.8, 0.76, 0.72],
-  },
-];
-
-export const GATE_REJECT_TEXT = "GATE REJECTED (<0.55)";
+export const GATE_REJECT_TEXT = `GATE REJECTED (<${VisionConfig.confidenceFloor.toFixed(2)})`;
 
 export interface VisionScanResult {
   id: VisionScanId;
@@ -144,7 +109,7 @@ export class VisionScanStandIn extends BaseScriptComponent {
 
     const proposal: AIProposal = {
       source: "RAPIDROUTER_VISION",
-      targetTaskId: "skillet_sear_skin",
+      targetTaskId: VisionConfig.targetTaskId,
       status: script.status,
       confidence: script.confidence,
       proposedDeltaSeconds: script.proposedDeltaSeconds,
@@ -153,7 +118,7 @@ export class VisionScanStandIn extends BaseScriptComponent {
     const evaluation = ProposalGate.evaluate(proposal, true);
 
     if (evaluation.decision === "AUTO_APPLY" && evaluation.effectiveDeltaSeconds > 0 && this.dagController) {
-      this.dagController.proposeCookingExtension("skillet_sear_skin", evaluation.effectiveDeltaSeconds);
+      this.dagController.proposeCookingExtension(VisionConfig.targetTaskId, evaluation.effectiveDeltaSeconds);
     }
 
     const conf = script.confidence.toFixed(2);
@@ -359,7 +324,7 @@ export class VisionScanStandIn extends BaseScriptComponent {
     }
 
     const label = createWorldLabel(this.reticleRoot, "VisionScanReticle_Conf", "", 34, new vec4(VIOLET[0], VIOLET[1], VIOLET[2], 1), 5.0, 1.0);
-    const lp = new vec3(4.6, 0.6, 2.6); // front-right of the fillet (the flip callouts own the left)
+    const lp = new vec3(6.6, 0.2, 3.4); // off the fillet's right end, over the pan rim (flip callouts own the left)
     label.root.getTransform().setLocalPosition(lp);
     label.root.getTransform().setLocalRotation(faceDirectorCamera(anchor.add(lp)));
     this.confLabel = label.text;

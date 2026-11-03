@@ -6,8 +6,9 @@ import { buildAnnulusMesh, buildUnitQuadMesh, clamp01, tint } from "./DAGCounter
 // StationsRoot-local burner centres (mirrors StationPropsBuilder.ts)
 const SKILLET_XZ = new vec2(-11.2, -1.5);
 const SAUCIER_XZ = new vec2(0.0, -10.5);
-const SKILLET_R = 8.5; // spec ~9, trimmed so the 9 o'clock tick stays on the slab (x >= -20)
-const SAUCIER_R = 6.0;
+// WS9: pulled in to hug the cookware (skillet rim ~6.84, saucier rim ~4.08); mirrors StationPropsBuilder SEAR_ARC_R / SIMMER_ARC_R
+const SKILLET_R = 7.75;
+const SAUCIER_R = 4.85;
 const RING_Y = -0.06; // flush on the slab (top at -0.23)
 const TICKS = 24;
 const DEG = Math.PI / 180;
@@ -144,7 +145,7 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     for (let i = 0; i < TICKS; i++) {
       const t = this.makeTick(skRoot, `SkilletTick_${i}`, this.quad, this.matOn);
       // v5: thin tangential dashes -> a broken glowing arc instead of chunky radial blocks
-      this.placeRadial(t, SKILLET_XZ, SKILLET_R, i * (360 / TICKS), 0.17, 1.55);
+      this.placeRadial(t, SKILLET_XZ, SKILLET_R, i * (360 / TICKS), 0.15, 1.62);
       this.skilletTicks.push(t);
     }
     this.invariant = this.makeTick(skRoot, "Chrono_InvariantTick", this.quad);
@@ -154,7 +155,7 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     this.heatGuard = this.makeTick(skRoot, "Chrono_HeatGuard", buildAnnulusMesh(0.975, 1.0, 96));
     const hg = this.heatGuard.obj.getTransform();
     hg.setLocalPosition(new vec3(SKILLET_XZ.x, RING_Y + 0.01, SKILLET_XZ.y));
-    hg.setLocalScale(new vec3(SKILLET_R - 1.0, 1, SKILLET_R - 1.0));
+    hg.setLocalScale(new vec3(SKILLET_R - 0.5, 1, SKILLET_R - 0.5));
     this.heatGuard.obj.enabled = false;
 
     // Saucier ring: dim cyan base ticks + 7-segment window arc + 7-segment ghost arc
@@ -162,7 +163,7 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     scRoot.setParent(this.root);
     for (let i = 0; i < TICKS; i++) {
       const t = this.makeTick(scRoot, `SaucierTick_${i}`, this.quad, this.matBase);
-      this.placeRadial(t, SAUCIER_XZ, SAUCIER_R, i * (360 / TICKS), 0.12, 1.05);
+      this.placeRadial(t, SAUCIER_XZ, SAUCIER_R, i * (360 / TICKS), 0.11, 1.0);
       this.saucierTicks.push(t);
     }
     for (let i = 0; i < 7; i++) {
@@ -260,13 +261,13 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     for (let i = 0; i < 7; i++) {
       const off = (i - 3) * 15;
       const w = this.windowSegs[i];
-      this.placeRadial(w, SAUCIER_XZ, SAUCIER_R + 0.05, this.windowCenter + off, 0.22, 1.4, RING_Y + 0.02);
+      this.placeRadial(w, SAUCIER_XZ, SAUCIER_R + 0.05, this.windowCenter + off, 0.2, 1.18, RING_Y + 0.02);
       tint(w.mat, winColor, winK);
 
       const g = this.ghostSegs[i];
       g.obj.enabled = this.ghostShown;
       if (this.ghostShown) {
-        this.placeRadial(g, SAUCIER_XZ, SAUCIER_R + 0.05, this.ghostCenter + off, 0.14, 1.25, RING_Y + 0.01);
+        this.placeRadial(g, SAUCIER_XZ, SAUCIER_R + 0.05, this.ghostCenter + off, 0.13, 1.05, RING_Y + 0.01);
         tint(g.mat, GHOST, 0.45);
       }
     }
@@ -279,7 +280,7 @@ export class DiegeticChronoRing extends BaseScriptComponent {
     const phase = Math.sin(time * 10.0) > 0 ? 1 : 0;
     tint(this.heatGuard.mat, phase ? AMBER : RED, 1.0);
     const f = this.driftFlashT / this.driftFlashSeconds;
-    const base = SKILLET_R - 1.0;
+    const base = SKILLET_R - 0.5;
     const s = base * (1.0 + 0.06 * Math.sin(time * 10.0) + 0.05 * (1.0 - f));
     this.heatGuard.obj.getTransform().setLocalScale(new vec3(s, 1, s));
   }

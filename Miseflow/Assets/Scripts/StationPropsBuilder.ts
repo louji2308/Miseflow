@@ -1,3 +1,4 @@
+import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
 
 const BASE_PBR_TEMPLATE = requireAsset("../Materials/Mat_DarkSlate.mat") as Material;
@@ -75,7 +76,6 @@ const MAT_SEAR_MARK = makePbrMaterial(0.22, 0.10, 0.04, 0.10, 0.72); // dark Mai
 const MAT_INDUCTION_AMBER = makePbrMaterial(0.96, 0.58, 0.12, 0.05, 0.35);
 const MAT_INDUCTION_COOL = makePbrMaterial(0.22, 0.62, 0.96, 0.05, 0.35);
 const MAT_INDUCTION_EMERALD = makePbrMaterial(0.18, 0.88, 0.52, 0.05, 0.38);
-const MAT_TRANSFER_RIBBON = makePbrMaterial(0.22, 0.86, 0.98, 0.08, 0.18);
 const MAT_RIVET_STEEL = makePbrMaterial(0.82, 0.84, 0.88, 0.80, 0.22);
 
 // ─── v5 "premium render" pass: procedural albedo maps (Assets/Textures, generated offline) ───
@@ -100,14 +100,19 @@ export function makeTexturedPbr(
 }
 
 // Additive display: the slab must stay mid-grey to read as solid (dark = see-through on Specs)
-const MAT_SLAB = makeTexturedPbr(TEX_SLAB, 0.35, 0.28, 1.45, 1.5, 1.6);          // brushed charcoal steel
+// WS10: tint nudged from cool blue-slate (1.45,1.50,1.60) to a slightly warmer, deeper graphite-slate.
+const MAT_SLAB = makeTexturedPbr(TEX_SLAB, 0.35, 0.28, 1.44, 1.42, 1.43);        // brushed graphite-slate steel
 const MAT_CAST_IRON_TEX = makeTexturedPbr(TEX_CAST_IRON, 0.4, 0.42, 1.55, 1.55, 1.6); // seasoned cast iron
 const MAT_SALMON_SEARED = makeTexturedPbr(TEX_SALMON, 0.0, 0.32);                    // crust + grill marks
-const MAT_SAUCE_TOMATO = makeTexturedPbr(TEX_SAUCE, 0.05, 0.1);                      // red-orange reduction
+// WS9-P2: pan-side crispy skin (hidden until the spatula flips the fillet); the vision stand-in
+// re-tints it through its "SalmonCrispySkin" binding.
+const MAT_SALMON_CRISP = makeTexturedPbr(TEX_SALMON, 0.0, 0.18, 0.95, 1.0, 0.45);   // golden-brown crisp skin
+export const MAT_SAUCE_TOMATO = makeTexturedPbr(TEX_SAUCE, 0.05, 0.1);               // red-orange reduction
 const MAT_ENDGRAIN = makeTexturedPbr(TEX_ENDGRAIN, 0.0, 0.62);                       // end-grain block top
 const MAT_WOOD_SIDE = makePbrMaterial(0.56, 0.34, 0.17, 0.0, 0.6);
 const MAT_CHROME = makePbrMaterial(0.95, 0.96, 0.97, 0.55, 0.2);
-const MAT_PLATE_MATTE = makePbrMaterial(0.76, 0.76, 0.74, 0.0, 0.34);
+const MAT_PLATE_MATTE = makePbrMaterial(0.80, 0.80, 0.78, 0.0, 0.62); // WS9: solid matte light grey
+const MAT_PLATE_RIM = makePbrMaterial(0.56, 0.57, 0.58, 0.05, 0.5);
 const MAT_POLY_HANDLE = makePbrMaterial(0.12, 0.12, 0.13, 0.15, 0.32);
 const MAT_PAN_OIL = makePbrMaterial(0.24, 0.14, 0.05, 0.3, 0.03);
 const MAT_ROSEMARY = makePbrMaterial(0.17, 0.36, 0.15, 0.0, 0.5);
@@ -121,22 +126,255 @@ const MAT_ARC_CYAN = makeEmissiveMaterial(0.25, 0.85, 1.0, 1.0);
 const MAT_GUIDE_LINE = makeEmissiveMaterial(0.75, 0.95, 1.0, 0.9);
 
 /** Small indexed-mesh accumulator; triangles auto-orient to their stored vertex normals. */
-class MeshAcc {
+export class MeshAcc {
   private pos: number[] = [];
   private nrm: number[] = [];
   private uvs: number[] = [];
   private idx: number[] = [];
 
+  // Optional placement transform (M = R*S for positions, R*S^-1 for normals) applied in v().
+  private xm: number[] | null = null;
+  private xn: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  private xt: number[] = [0, 0, 0];
+
   count(): number {
     return this.pos.length / 3;
   }
 
+  /** Place subsequent geometry: scale (sx,sy,sz), then rotate Ry(yaw)*Rx(pitch)*Rz(roll), then translate. */
+  setXform(tx: number, ty: number, tz: number, yaw: number = 0, pitch: number = 0, roll: number = 0, sx: number = 1, sy: number = 1, sz: number = 1): void {
+    const cy = Math.cos(yaw), sy_ = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
+    const mul = (a: number[], b: number[]): number[] => {
+      const o: number[] = [];
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) o.push(a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c]);
+      return o;
+    };
+    const R = mul(mul([cy, 0, sy_, 0, 1, 0, -sy_, 0, cy], [1, 0, 0, 0, cp, -sp, 0, sp, cp]), [cr, -sr, 0, sr, cr, 0, 0, 0, 1]);
+    this.xm = mul(R, [sx, 0, 0, 0, sy, 0, 0, 0, sz]);
+    this.xn = mul(R, [1 / sx, 0, 0, 0, 1 / sy, 0, 0, 0, 1 / sz]);
+    this.xt = [tx, ty, tz];
+  }
+
+  clearXform(): void {
+    this.xm = null;
+  }
+
   v(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, w: number): number {
+    if (this.xm) {
+      const m = this.xm, q = this.xn, t = this.xt;
+      const px = m[0] * x + m[1] * y + m[2] * z + t[0];
+      const py = m[3] * x + m[4] * y + m[5] * z + t[1];
+      const pz = m[6] * x + m[7] * y + m[8] * z + t[2];
+      const qx = q[0] * nx + q[1] * ny + q[2] * nz;
+      const qy = q[3] * nx + q[4] * ny + q[5] * nz;
+      const qz = q[6] * nx + q[7] * ny + q[8] * nz;
+      x = px; y = py; z = pz; nx = qx; ny = qy; nz = qz;
+    }
     const l = Math.hypot(nx, ny, nz) || 1;
     this.pos.push(x, y, z);
     this.nrm.push(nx / l, ny / l, nz / l);
     this.uvs.push(u, w);
     return this.pos.length / 3 - 1;
+  }
+
+  /**
+   * Surface of revolution around +Y. Profile [r, y] runs bottom -> top. `lobes`/`amp` modulate the
+   * radius around the axis (garlic cloves, tomato ribs); phi0..phi1 allows half shells (cut veg).
+   */
+  lathe(profile: [number, number][], segs: number, lobes: number = 0, amp: number = 0, phi0: number = 0, phi1: number = Math.PI * 2): void {
+    const P = profile.length;
+    const n2: [number, number][] = [];
+    for (let j = 0; j < P; j++) {
+      const a = profile[Math.max(0, j - 1)], b = profile[Math.min(P - 1, j + 1)];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const l = Math.hypot(dx, dy) || 1;
+      n2.push([dy / l, -dx / l]);
+    }
+    const base = this.count();
+    for (let i = 0; i <= segs; i++) {
+      const ph = phi0 + (phi1 - phi0) * (i / segs);
+      const c = Math.cos(ph), s = Math.sin(ph);
+      const k = 1 + amp * Math.cos(lobes * ph);
+      for (let j = 0; j < P; j++) {
+        const r = profile[j][0] * k;
+        this.v(r * c, profile[j][1], r * s, n2[j][0] * c, n2[j][1], n2[j][0] * s, i / segs, j / (P - 1));
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      for (let j = 0; j < P - 1; j++) {
+        const a = base + i * P + j;
+        this.quad(a, a + 1, a + P + 1, a + P);
+      }
+    }
+  }
+
+  /** Flat cut face in the x = 0 plane spanning the profile (pairs with a half lathe phi -90..90). */
+  cutFace(profile: [number, number][], nx: number = -1): void {
+    const ids: number[] = [];
+    for (const [r, y] of profile) {
+      ids.push(this.v(0, y, -r, nx, 0, 0, 0, 0), this.v(0, y, r, nx, 0, 0, 1, 0));
+    }
+    for (let j = 0; j < profile.length - 1; j++) this.quad(ids[j * 2], ids[j * 2 + 1], ids[j * 2 + 3], ids[j * 2 + 2]);
+  }
+
+  /** Thin slice (cross-section of a lathe profile scaled by k) of thickness th, faces along +-X. */
+  crossSlab(profile: [number, number][], k: number, th: number): void {
+    const P = profile.length;
+    let yc = 0;
+    for (const p of profile) yc += p[1];
+    yc /= P;
+    const per: [number, number][] = [];
+    for (let j = 0; j < P; j++) per.push([profile[j][1], profile[j][0] * k]);
+    for (let j = P - 1; j >= 0; j--) per.push([profile[j][1], -profile[j][0] * k]);
+    for (const side of [-1, 1]) {
+      const c = this.v((side * th) / 2, yc, 0, side, 0, 0, 0.5, 0.5);
+      const ring: number[] = [];
+      for (const [y, z] of per) ring.push(this.v((side * th) / 2, y, z, side, 0, 0, 0, 0));
+      for (let j = 0; j < ring.length; j++) this.tri(c, ring[j], ring[(j + 1) % ring.length]);
+    }
+    const N = per.length;
+    const ids: number[] = [];
+    for (const [y, z] of per) {
+      ids.push(this.v(-th / 2, y, z, 0, y - yc, z, 0, 0), this.v(th / 2, y, z, 0, y - yc, z, 1, 0));
+    }
+    for (let j = 0; j < N; j++) {
+      const j2 = (j + 1) % N;
+      this.quad(ids[j * 2], ids[j * 2 + 1], ids[j2 * 2 + 1], ids[j2 * 2]);
+    }
+  }
+
+  /** Ellipsoid centred at (cx,cy,cz) with optional lobes (frilly leaves, garlic cloves). */
+  ellipsoid(cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, segs: number, rings: number, yaw: number = 0, pitch: number = 0, lobes: number = 0, amp: number = 0): void {
+    const prof: [number, number][] = [];
+    for (let i = 0; i <= rings; i++) {
+      const t = (i / rings) * Math.PI;
+      prof.push([Math.sin(t), -Math.cos(t)]);
+    }
+    this.setXform(cx, cy, cz, yaw, pitch, 0, rx, ry, rz);
+    this.lathe(prof, segs, lobes, amp);
+    this.clearXform();
+  }
+
+  /**
+   * Swept tube with an elliptical, per-point cross-section (rw = side half-width, rh = up half-height).
+   * Frame: side = T x up, up = side x T (good for handles / stems that are not vertical).
+   */
+  sweep(curve: [number, number, number][], rw: number[], rh: number[], segs: number, caps: boolean = true): void {
+    const N = curve.length;
+    const base = this.count();
+    const frames: { s: number[]; u: number[] }[] = [];
+    for (let i = 0; i < N; i++) {
+      const a = curve[Math.max(0, i - 1)], b = curve[Math.min(N - 1, i + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1], tz = b[2] - a[2];
+      const tl = Math.hypot(tx, ty, tz) || 1;
+      tx /= tl; ty /= tl; tz /= tl;
+      const hint = Math.abs(ty) > 0.95 ? [1, 0, 0] : [0, 1, 0];
+      let sx = ty * hint[2] - tz * hint[1], sy = tz * hint[0] - tx * hint[2], sz = tx * hint[1] - ty * hint[0];
+      const sl = Math.hypot(sx, sy, sz) || 1;
+      sx /= sl; sy /= sl; sz /= sl;
+      const ux = sy * tz - sz * ty, uy = sz * tx - sx * tz, uz = sx * ty - sy * tx;
+      frames.push({ s: [sx, sy, sz], u: [ux, uy, uz] });
+    }
+    for (let i = 0; i < N; i++) {
+      const p = curve[i], f = frames[i];
+      for (let j = 0; j <= segs; j++) {
+        const th = (j / segs) * Math.PI * 2;
+        const c = Math.cos(th), s = Math.sin(th);
+        const ox = f.s[0] * c * rw[i] + f.u[0] * s * rh[i];
+        const oy = f.s[1] * c * rw[i] + f.u[1] * s * rh[i];
+        const oz = f.s[2] * c * rw[i] + f.u[2] * s * rh[i];
+        const nx = (f.s[0] * c) / rw[i] + (f.u[0] * s) / rh[i];
+        const ny = (f.s[1] * c) / rw[i] + (f.u[1] * s) / rh[i];
+        const nz = (f.s[2] * c) / rw[i] + (f.u[2] * s) / rh[i];
+        this.v(p[0] + ox, p[1] + oy, p[2] + oz, nx, ny, nz, j / segs, i / (N - 1));
+      }
+    }
+    const R = segs + 1;
+    for (let i = 0; i < N - 1; i++) {
+      for (let j = 0; j < segs; j++) {
+        const a = base + i * R + j;
+        this.quad(a, a + 1, a + R + 1, a + R);
+      }
+    }
+    if (caps) {
+      for (const [ci, dir] of [[0, -1], [N - 1, 1]]) {
+        const a = curve[Math.max(0, ci - 1)], b = curve[Math.min(N - 1, ci + 1)];
+        const p = curve[ci];
+        const cIdx = this.v(p[0], p[1], p[2], (b[0] - a[0]) * dir, (b[1] - a[1]) * dir, (b[2] - a[2]) * dir, 0.5, 0.5);
+        for (let j = 0; j < segs; j++) {
+          // reuse ring positions, but give the cap its own flat normal
+          const r0 = base + ci * R + j;
+          const p0 = this.pos.slice(r0 * 3, r0 * 3 + 3);
+          const p1 = this.pos.slice((r0 + 1) * 3, (r0 + 1) * 3 + 3);
+          const nn = this.nrm.slice(cIdx * 3, cIdx * 3 + 3);
+          const saved = this.xm;
+          this.xm = null; // positions already transformed
+          const i0 = this.v(p0[0], p0[1], p0[2], nn[0], nn[1], nn[2], 0, 0);
+          const i1 = this.v(p1[0], p1[1], p1[2], nn[0], nn[1], nn[2], 1, 0);
+          this.xm = saved;
+          this.tri(cIdx, i0, i1);
+        }
+      }
+    }
+  }
+
+  /** Torus around axis `ax` through (cx,cy,cz); e1/e2 span the loop plane. a = in-plane tube radius, b = along-axis. */
+  torus(cx: number, cy: number, cz: number, e1: number[], e2: number[], ax: number[], R: number, a: number, b: number, segM: number, segN: number): void {
+    const base = this.count();
+    for (let i = 0; i <= segM; i++) {
+      const t = (i / segM) * Math.PI * 2;
+      const rx = e1[0] * Math.cos(t) + e2[0] * Math.sin(t);
+      const ry = e1[1] * Math.cos(t) + e2[1] * Math.sin(t);
+      const rz = e1[2] * Math.cos(t) + e2[2] * Math.sin(t);
+      for (let j = 0; j <= segN; j++) {
+        const p = (j / segN) * Math.PI * 2;
+        const c = Math.cos(p), s = Math.sin(p);
+        this.v(
+          cx + rx * (R + a * c) + ax[0] * b * s,
+          cy + ry * (R + a * c) + ax[1] * b * s,
+          cz + rz * (R + a * c) + ax[2] * b * s,
+          (rx * c) / a + (ax[0] * s) / b, (ry * c) / a + (ax[1] * s) / b, (rz * c) / a + (ax[2] * s) / b,
+          i / segM, j / segN
+        );
+      }
+    }
+    const S = segN + 1;
+    for (let i = 0; i < segM; i++) {
+      for (let j = 0; j < segN; j++) {
+        const q = base + i * S + j;
+        this.quad(q, q + 1, q + S + 1, q + S);
+      }
+    }
+  }
+
+  /** Low domed rivet head of radius r and height h, facing normal n. */
+  dome(cx: number, cy: number, cz: number, n: number[], r: number, h: number, segs: number = 10): void {
+    const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+    const N = [n[0] / nl, n[1] / nl, n[2] / nl];
+    const hint = Math.abs(N[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+    let ex = [N[1] * hint[2] - N[2] * hint[1], N[2] * hint[0] - N[0] * hint[2], N[0] * hint[1] - N[1] * hint[0]];
+    const el = Math.hypot(ex[0], ex[1], ex[2]) || 1;
+    ex = [ex[0] / el, ex[1] / el, ex[2] / el];
+    const ey = [N[1] * ex[2] - N[2] * ex[1], N[2] * ex[0] - N[0] * ex[2], N[0] * ex[1] - N[1] * ex[0]];
+    const base = this.count();
+    const K = 3;
+    for (let k = 0; k <= K; k++) {
+      const al = (k / K) * (Math.PI / 2);
+      const rr = r * Math.cos(al) + 1e-4, hh = h * Math.sin(al);
+      for (let i = 0; i <= segs; i++) {
+        const t = (i / segs) * Math.PI * 2;
+        const c = Math.cos(t), s = Math.sin(t);
+        const dx = ex[0] * c + ey[0] * s, dy = ex[1] * c + ey[1] * s, dz = ex[2] * c + ey[2] * s;
+        this.v(cx + dx * rr + N[0] * hh, cy + dy * rr + N[1] * hh, cz + dz * rr + N[2] * hh,
+          dx * Math.cos(al) * h + N[0] * Math.sin(al) * r, dy * Math.cos(al) * h + N[1] * Math.sin(al) * r, dz * Math.cos(al) * h + N[2] * Math.sin(al) * r,
+          i / segs, k / K);
+      }
+    }
+    const S = segs + 1;
+    for (let k = 0; k < K; k++) for (let i = 0; i < segs; i++) {
+      const q = base + k * S + i;
+      this.quad(q, q + 1, q + S + 1, q + S);
+    }
   }
 
   tri(a: number, b: number, c: number): void {
@@ -311,16 +549,102 @@ const COUNTER_HALF = new vec3(20.0, 1.6, 13.75); // slab x -20..20, z -17..10.5
 const COOKWARE_Y = -0.22;
 const SKILLET_POS = new vec3(-11.2, COOKWARE_Y, -1.5);
 const SKILLET_YAW = -66 * (Math.PI / 180); // swings the long handle to the rear-left
+// WS9-P2 salmon fillet dims (pan-local units): dome height above the pan side, and the gentle
+// bulge of the seared skin below it. SpatulaFlipRig pivots the flip on these.
+export const SALMON_DOME_H = 1.9;
+export const SALMON_SKIN_BULGE = 0.22;
 const SAUCIER_POS = new vec3(0.0, COOKWARE_Y, -10.5);
 const PREP_POS = new vec3(10.5, 0.64, -3.0); // board feet (local -1.27 * 0.68) rest on slab top
 const PLATE_POS = new vec3(0.0, COOKWARE_Y, 4.5);
+// WS9 burner-arc radii (StationsRoot cm). Skillet: inner dashes / outer hairline / accents; the live
+// chrono ring (DiegeticChronoRing SKILLET_R 7.75, SAUCIER_R 4.85) sits between inner and outer.
+const SEAR_ARC_R = [7.2, 8.3, 8.6];
+const SIMMER_ARC_R = [4.4, 5.3, 5.6];
+// WS9: plate ~25% smaller (rim radius 5.95 -> ~4.46 cm); heights unchanged.
+const PLATE_SCALE = 0.75;
 // Knife edge sits on cut line 0; MetricPrepBlueprint steps +1.5 per chop (8 chops -> x +3.5),
 // so everything else on the board lives at x >= 4.3 to stay out of the blade sweep.
 const KNIFE_REST_X = -8.5;
-const SLICE_RADIUS = 0.5;
 
-function sliceRestX(i: number): number {
-  return KNIFE_REST_X + 0.75 + i * 1.5; // centred between cut lines i and i+1
+// ─── WS9 progressive chop (board-local units; board top y = 0.905) ───
+// Five whole veg sit left->right across the 8 cutting lanes (lane i = x -8.5+1.5i .. +1.5). After
+// cut n the knife rests on line n, so each veg spans exactly the lanes of the cuts that convert it.
+const VEG_NAMES = ["RedOnion", "Garlic", "Parsley", "Tomato", "YellowChilli"];
+const VEG_X = [-7.0, -4.75, -2.5, 0.5, 2.75];
+const VEG_Z = 1.2;
+const VEG_TOP_Y = 0.905;
+/** Step Cut n (1..8) -> [veg index, new stage] (stage 0 whole, 1 partly cut, 2 diced). */
+const CUT_MAP: [number, number][] = [[0, 1], [0, 2], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2], [4, 2]];
+// Prep bowl on the slab in front of the board's right end (board-local; slab top = -1.279)
+const BOWL_LOCAL = new vec3(6.2, -1.279, 11.0);
+const BOWL_FLOOR_Y = BOWL_LOCAL.y + 0.32;
+const BOWL_SLOTS: [number, number][] = [[-0.75, -0.45], [0.75, -0.5], [0.0, 0.1], [-0.5, 0.75], [0.55, 0.7]];
+const BOWL_FILL_SCALE = 0.6;
+const POUR_SECONDS = 0.75;
+const POUR_STAGGER = 0.1;
+// WS9-P3 bowl -> saucier pour (seconds; board-local units). The bowl lifts off the slab, travels to
+// the saucier's board-side rim, tips its mouth toward the pot so the diced veg slide into the sauce,
+// tips back and returns home. Parsley (garnish) stays in the bowl for plating.
+// WS10: the trip runs TWICE - pour 1 = measured portion (golden stock base), pour 2 = diced veg
+// (sauce turns red + herb-flecked). Each pour keeps the bowl tipped over the pot for ~2.2 s.
+const BOWL_POUR_DELAY = 0.3;
+const BOWL_TRAVEL_SEC = 1.2;
+const BOWL_TIP_SEC = 0.6;
+const BOWL_SLIDE_SEC = 0.75;
+const BOWL_HOLD_SEC = 1.1;
+const BOWL_TIPBACK_SEC = 0.5;
+const BOWL_RETURN_SEC = 1.1;
+const BOWL_TIP_ANGLE = 65 * (Math.PI / 180);
+const POUR_GAP_SEC = 0.5; // pause between the two pours (bowl home, veg hop into it)
+const GARNISH_VEG = 2; // parsley
+// WS10 saucier contents (pot-local y; pot lathe inner wall as [y, r])
+const POT_INNER: [number, number][] = [[0.48, 0.0], [0.62, 3.6], [1.2, 4.64], [3.8, 4.84], [4.86, 5.0]];
+const SAUCE_Y_FLOOR = 0.72;
+const SAUCE_Y_BASE = 2.3; // after the portion pour
+const SAUCE_Y_FULL = 3.86; // after the veg pour
+const SAUCE_Y_SERVED = 3.3; // after the plating pour
+const STREAM_DROPS = 6;
+
+function potInnerR(y: number): number {
+  if (y <= POT_INNER[0][0]) return 0;
+  for (let i = 1; i < POT_INNER.length; i++) {
+    const a = POT_INNER[i - 1];
+    const b = POT_INNER[i];
+    if (y <= b[0]) return a[1] + ((b[1] - a[1]) * (y - a[0])) / (b[0] - a[0]);
+  }
+  return POT_INNER[POT_INNER.length - 1][1];
+}
+
+const ONION_PROFILE: [number, number][] = [[0, 0], [0.4, 0.03], [0.78, 0.18], [0.98, 0.45], [1.04, 0.75], [0.96, 1.05], [0.72, 1.32], [0.4, 1.52], [0.14, 1.66], [0.05, 1.8], [0, 1.84]];
+const GARLIC_PROFILE: [number, number][] = [[0, 0], [0.25, 0.02], [0.5, 0.12], [0.6, 0.32], [0.58, 0.55], [0.45, 0.76], [0.25, 0.92], [0.1, 1.02], [0.06, 1.2], [0, 1.24]];
+const TOMATO_PROFILE: [number, number][] = [[0, 0.04], [0.45, 0], [0.85, 0.12], [1.07, 0.42], [1.1, 0.72], [0.95, 1.05], [0.62, 1.28], [0.25, 1.37], [0, 1.34]];
+
+interface VegItem {
+  root: SceneObject;
+  stages: SceneObject[]; // [whole, partial, diced]
+  stage: number;
+  home: vec3;
+}
+
+interface VegCutAnim {
+  veg: number;
+  from: number;
+  to: number;
+  t: number;
+  step: number; // 0 = waiting for knife dip, 1 = partial shown (two-step flash), 2 = done
+}
+
+/** Small heap of diced pieces (or thin herb flakes) mounded around the local origin, resting on y = 0. */
+function dicePile(acc: MeshAcc, seed: number, hx: number, hz: number, d: number, n: number, flake: boolean): void {
+  const rnd = makeRng(seed);
+  for (let k = 0; k < n; k++) {
+    const px = (rnd() - 0.5) * 2 * hx;
+    const pz = (rnd() - 0.5) * 2 * hz;
+    const mound = Math.max(0, 1 - 0.8 * (px / hx) * (px / hx) - 0.8 * (pz / hz) * (pz / hz));
+    const s = d * (0.75 + 0.5 * rnd());
+    const py = (flake ? s * 0.35 : s * 0.85) + mound * (flake ? 0.22 : 0.38) * rnd();
+    acc.box(px, py, pz, s, flake ? s * 0.3 : s * 0.85, s * (flake ? 1.3 : 1.0), rnd() * Math.PI, (rnd() - 0.5) * 0.7);
+  }
 }
 
 const BASE_KNIFE_PITCH = 0.0;
@@ -670,6 +994,98 @@ function buildRingCurve(radius: number, y: number, steps: number = 32): [number,
   return pts;
 }
 
+export interface SteamOpts {
+  count: number;
+  spread: number; // x spacing between wisps
+  baseY: number; // wisp start height (parent-local)
+  rise: number; // height gained over one loop
+  size0: number; // quad width at birth
+  size1: number; // width gained over one loop
+  alpha: number; // peak opacity
+  speed: number; // loops per second
+  sway: number;
+  z: number;
+  fadeIn: number; // seconds 0 -> 1 intensity
+  fadeOut: number; // seconds 1 -> 0 intensity
+}
+
+/**
+ * WS10: soft rising steam (Tex_Steam quads, normal blend, no depth write) with a fade-able
+ * intensity. Callers set `target` (0..1) and tick update(dt); the root is disabled while silent.
+ */
+export class SteamPlume {
+  public readonly root: SceneObject;
+  public target: number = 0;
+  public baseY: number;
+  private level: number = 0;
+  private time: number = 0;
+  private opts: SteamOpts;
+  private wisps: { obj: SceneObject; mat: Material; phase: number; x: number }[] = [];
+
+  constructor(parent: SceneObject, rootName: string, wispPrefix: string, opts: SteamOpts) {
+    this.opts = opts;
+    this.baseY = opts.baseY;
+    this.root = global.scene.createSceneObject(rootName);
+    this.root.setParent(parent);
+    const quad = new MeshAcc();
+    const q0 = quad.v(-0.5, 0, 0, 0, 0, 1, 0, 0);
+    const q1 = quad.v(0.5, 0, 0, 0, 0, 1, 1, 0);
+    const q2 = quad.v(0.5, 1, 0, 0, 0, 1, 1, 1);
+    const q3 = quad.v(-0.5, 1, 0, 0, 0, 1, 0, 1);
+    quad.quad(q0, q1, q2, q3);
+    for (let i = 0; i < opts.count; i++) {
+      const o = global.scene.createSceneObject(`${wispPrefix}_${i}`);
+      o.setParent(this.root);
+      const m = makeTexturedPbr(TEX_STEAM, 0.0, 1.0, 1, 1, 1);
+      m.mainPass.blendMode = BlendMode.Normal;
+      m.mainPass.depthWrite = false;
+      m.mainPass.twoSided = true;
+      try {
+        (m.mainPass as any).Port_Emissive_N006 = new vec3(0.55, 0.55, 0.58);
+      } catch (e) {
+        // no emissive port
+      }
+      m.mainPass.baseColor = new vec4(1, 1, 1, 0);
+      const rmv = o.createComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      rmv.mainMaterial = m;
+      quad.apply(rmv);
+      this.wisps.push({ obj: o, mat: m, phase: i / opts.count, x: (i - (opts.count - 1) / 2) * opts.spread });
+    }
+    this.root.enabled = false;
+  }
+
+  public getLevel(): number {
+    return this.level;
+  }
+
+  /** Jump straight to an intensity (used by Reset). */
+  public setNow(v: number): void {
+    this.level = v;
+    this.target = v;
+    if (v <= 0.001) this.root.enabled = false;
+  }
+
+  public update(dt: number): void {
+    const o = this.opts;
+    if (this.level < this.target) this.level = Math.min(this.target, this.level + dt / o.fadeIn);
+    else if (this.level > this.target) this.level = Math.max(this.target, this.level - dt / o.fadeOut);
+    if (this.level <= 0.001) {
+      if (this.root.enabled) this.root.enabled = false;
+      return;
+    }
+    if (!this.root.enabled) this.root.enabled = true;
+    this.time += dt;
+    for (const w of this.wisps) {
+      const t = (this.time * o.speed + w.phase) % 1.0;
+      const tr = w.obj.getTransform();
+      tr.setLocalPosition(new vec3(w.x + Math.sin((t + w.phase) * 6.0) * o.sway, this.baseY + t * o.rise, o.z + w.x * 0.2));
+      const s = o.size0 + t * o.size1;
+      tr.setLocalScale(new vec3(s, s * 1.5, 1));
+      w.mat.mainPass.baseColor = new vec4(1, 1, 1, Math.sin(t * Math.PI) * o.alpha * this.level);
+    }
+  }
+}
+
 /**
  * StationPropsBuilder.ts
  * Transforms the 3 stations from primitive graybox blocks into recognizable,
@@ -683,7 +1099,6 @@ function buildRingCurve(radius: number, y: number, steps: number = 32): [number,
  */
 @component
 export class StationPropsBuilder extends BaseScriptComponent {
-  private shallotSlices: SceneObject[] = [];
   private knifeRoot?: SceneObject;
   private isKnifeChopping: boolean = false;
   private knifeAnimTimer: number = 0.0;
@@ -695,7 +1110,44 @@ export class StationPropsBuilder extends BaseScriptComponent {
   private reticleRootObj?: SceneObject;
   private isPlatingConverged: boolean = false;
   private elapsedTime: number = 0.0;
-  private steamWisps: { obj: SceneObject; mat: Material; phase: number; x: number }[] = [];
+  // WS10 steam windows: saucier (ingredients in -> plating), skillet (sear clock running -> salmon leaves)
+  private saucierSteam?: SteamPlume;
+  private skilletSteam?: SteamPlume;
+  private dag: ChoreographyDAG | null = null;
+  private platingStarted: boolean = false;
+  // WS10 saucier contents: golden portion base + red veg sauce (both unit discs scaled to the wall)
+  private stockObj?: SceneObject;
+  private sauceObj?: SceneObject;
+  private potLevel: number = 0; // pot-local y of the liquid surface (0 = empty)
+  private redCover: number = 0; // 0..1 red sauce spread over the base
+  private bowlLiquid?: SceneObject;
+  private streamDrops: SceneObject[] = [];
+  // WS10 two-pour transfer: 0 idle, 1 portion pour, 2 gap, 3 veg board->bowl, 4 veg pour, 5 done
+  private seqStage: number = 0;
+  private seqT: number = 0;
+  private pourPayload: number = 0; // 0 portion, 1 veg
+  private pourLevel0: number = 0; // pot level when the current pour started
+
+  // WS9 progressive chop + prep bowl state (hook points for P2/P3: see public API below)
+  private vegItems: VegItem[] = [];
+  private vegAnims: VegCutAnim[] = [];
+  private vegPops: { obj: SceneObject; t: number }[] = [];
+  private chopCount: number = 0;
+  private bowlObj?: SceneObject;
+  private domeRmv?: RenderMeshVisual;
+  private pourT: number = -1;
+  private bowlFilled: boolean = false;
+  private plateObj?: SceneObject;
+  // WS9-P3 bowl -> saucier pour state (board-local frame = BoardMesh)
+  private boardObj?: SceneObject;
+  private potObj?: SceneObject;
+  private saucierT: number = -1; // < -0.5 idle; >= -BOWL_POUR_DELAY running
+  private saucierActive: boolean = false;
+  private bowlPoured: boolean = false;
+  private garnishTaken: boolean = false;
+  private pourPose?: vec3;
+  private pourDir?: vec3; // horizontal unit vector bowl -> pot (board-local)
+  private sauceSurface?: vec3; // sauce surface centre (board-local)
 
   onAwake(): void {
     this.createEvent("OnStartEvent").bind(() => {
@@ -720,21 +1172,29 @@ export class StationPropsBuilder extends BaseScriptComponent {
         this.knifeAnimTimer = 0.0;
         this.knifeRoot.getTransform().setLocalRotation(getKnifeRotation(0));
       } else {
-        // Rock-chop: knife handle presses down and smoothly springs back up
+        // Rock-chop: knife handle presses down and smoothly springs back up; WS9 adds a short
+        // vertical dip so the edge visibly passes through the veg.
         const rockAngle = Math.sin(progress * Math.PI) * (-4.5 * (Math.PI / 180));
         this.knifeRoot.getTransform().setLocalRotation(getKnifeRotation(rockAngle));
+        this.knifeRoot.getTransform().setLocalPosition(new vec3(0, -0.14 * Math.sin(progress * Math.PI), 0));
       }
+      if (!this.isKnifeChopping) this.knifeRoot.getTransform().setLocalPosition(vec3.zero());
     }
 
-    // Steam wisps: slow rise + sway + fade loop above the saucier
-    for (const w of this.steamWisps) {
-      const t = (this.elapsedTime * 0.28 + w.phase) % 1.0;
-      const tr = w.obj.getTransform();
-      tr.setLocalPosition(new vec3(w.x + Math.sin((t + w.phase) * 6.0) * 0.5, 4.2 + t * 4.5, -0.5 + w.x * 0.2));
-      const s = 2.6 + t * 2.2;
-      tr.setLocalScale(new vec3(s, s * 1.5, 1));
-      const a = Math.sin(t * Math.PI) * 0.75;
-      w.mat.mainPass.baseColor = new vec4(1, 1, 1, a);
+    this.updateVegAnimations(getDeltaTime());
+
+    // WS10 steam windows. Saucier: only once ingredients are in, until plating takes the pot.
+    // Skillet: only while the sear clock has run, until the salmon leaves for the plate.
+    const dt = getDeltaTime();
+    if (this.saucierSteam) {
+      this.saucierSteam.target = this.potLevel > SAUCE_Y_FLOOR + 0.2 && !this.platingStarted ? 1 : 0;
+      this.saucierSteam.update(dt);
+    }
+    if (this.skilletSteam) {
+      if (!this.dag) this.dag = this.getSceneObject().getComponent(ChoreographyDAG.getTypeName()) as ChoreographyDAG;
+      const searing = !!this.dag && this.dag.getSkilletProgress() > 0.002;
+      this.skilletSteam.target = searing && !this.platingStarted ? 1 : 0;
+      this.skilletSteam.update(dt);
     }
 
     // Thermal LED pulse — SKIPPED: LED glow objects disabled (rendered as floating wires)
@@ -789,6 +1249,11 @@ export class StationPropsBuilder extends BaseScriptComponent {
       this.isPlatingConverged = true;
       if (this.reticleRootObj) this.reticleRootObj.enabled = true;
     });
+    // WS9-P3: once the dish is plated the alignment reticle has done its job
+    this.eventBus.on("DISH_PLATED", () => {
+      this.isPlatingConverged = false;
+      if (this.reticleRootObj) this.reticleRootObj.enabled = false;
+    });
     this.eventBus.on("RESET_REQUESTED", () => {
       this.isPlatingConverged = false;
       if (this.reticleRootObj) this.reticleRootObj.enabled = false;
@@ -816,20 +1281,23 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
     // Thin broken glowing arcs under each burner (amber = sear, cyan = simmer); the live
     // 24-dash countdown ring (DiegeticChronoRing) sits between these two static bands.
+    // WS9: radii pulled in to hug the cookware (skillet rim ~6.84 cm, saucier rim ~4.08 cm) with
+    // tight dash gaps. Keep in sync with DiegeticChronoRing (SKILLET_R / SAUCIER_R) and
+    // DAGCounterConduit (convergence start radii + [LOCKED] node).
     const arcY = -0.215; // StationsRoot-local, just above the slab top (-0.23)
     const sear = new MeshAcc();
     const sx = SKILLET_POS.x, sz = SKILLET_POS.z;
-    for (const [a0, a1] of [[12, 78], [102, 168], [192, 258], [282, 348]]) sear.arc(sx, arcY, sz, 7.45, 0.1, a0, a1, 24);
-    for (const [a0, a1] of [[-35, 55], [145, 235]]) sear.arc(sx, arcY, sz, 9.55, 0.07, a0, a1, 30);
-    for (const [a0, a1] of [[70, 110], [250, 290]]) sear.arc(sx, arcY, sz, 10.05, 0.16, a0, a1, 12);
+    for (let k = 0; k < 6; k++) sear.arc(sx, arcY, sz, SEAR_ARC_R[0], 0.09, k * 60 + 4, k * 60 + 56, 16);
+    for (const [a0, a1] of [[-40, 60], [140, 240]]) sear.arc(sx, arcY, sz, SEAR_ARC_R[1], 0.06, a0, a1, 30);
+    for (const [a0, a1] of [[70, 110], [250, 290]]) sear.arc(sx, arcY, sz, SEAR_ARC_R[2], 0.13, a0, a1, 12);
     this.ensureRmv(this.ensureChild(root, "BurnerArcs_Sear"), MAT_ARC_AMBER);
     sear.apply(this.ensureChild(root, "BurnerArcs_Sear").getComponent("Component.RenderMeshVisual") as RenderMeshVisual);
 
     const sim = new MeshAcc();
     const px = SAUCIER_POS.x, pz = SAUCIER_POS.z;
-    for (const [a0, a1] of [[15, 75], [105, 165], [195, 255], [285, 345]]) sim.arc(px, arcY, pz, 4.75, 0.09, a0, a1, 20);
-    for (const [a0, a1] of [[-40, 40], [140, 220]]) sim.arc(px, arcY, pz, 6.95, 0.06, a0, a1, 24);
-    for (const [a0, a1] of [[200, 240], [300, 340]]) sim.arc(px, arcY, pz, 7.4, 0.14, a0, a1, 12);
+    for (let k = 0; k < 6; k++) sim.arc(px, arcY, pz, SIMMER_ARC_R[0], 0.08, k * 60 + 5, k * 60 + 55, 14);
+    for (const [a0, a1] of [[-40, 40], [140, 220]]) sim.arc(px, arcY, pz, SIMMER_ARC_R[1], 0.055, a0, a1, 24);
+    for (const [a0, a1] of [[200, 240], [300, 340]]) sim.arc(px, arcY, pz, SIMMER_ARC_R[2], 0.12, a0, a1, 12);
     this.ensureRmv(this.ensureChild(root, "BurnerArcs_Simmer"), MAT_ARC_CYAN);
     sim.apply(this.ensureChild(root, "BurnerArcs_Simmer").getComponent("Component.RenderMeshVisual") as RenderMeshVisual);
   }
@@ -931,6 +1399,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     // 10.5-inch radius, 14° organic rim flare, shallow concave dish center
     // Double-sided geometry so the dish interior is solid from all angles
     const plateObj = this.ensureChild(plateRoot, "PorcelainCoupePlate");
+    this.plateObj = plateObj;
     plateObj.getTransform().setLocalPosition(new vec3(0, 0, 0));
     const pRmv = this.ensureRmv(plateObj, MAT_PLATE_MATTE);
     const pb = createBuilder();
@@ -950,11 +1419,18 @@ export class StationPropsBuilder extends BaseScriptComponent {
       [3.45, 0.36],
       [3.00, 0.30],
       [0.0,  0.30],
-    ];
+    ].map(([r, y]) => [r * PLATE_SCALE, y] as [number, number]);
     buildLathe(pb, plateProfile, 72, [1, 1, 1, 1], 0, 0, 0, 0);
     pRmv.mesh = pb.getMesh();
     pRmv.mainMaterial = MAT_PLATE_MATTE;
     pb.updateMesh();
+
+    // WS9: slightly darker rolled rim band so the (smaller) plate edge reads as solid stoneware
+    const rimBand = this.ensureChild(plateObj, "PlateRimBand");
+    const rbRmv = this.ensureRmv(rimBand, MAT_PLATE_RIM);
+    const rbAcc = new MeshAcc();
+    rbAcc.torus(0, 1.2, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 5.86 * PLATE_SCALE, 0.1, 0.075, 72, 6);
+    rbAcc.apply(rbRmv);
 
     // ─── 2. Optical Plating Holographic Reticle ──────────────────────────────
     // Replaces the old thick green rubber ring.
@@ -974,8 +1450,8 @@ export class StationPropsBuilder extends BaseScriptComponent {
     for (let d = 0; d < dashCount; d++) {
       const dashObj = this.ensureChild(reticleRootObj, `PlatingDash_${d}`);
       const angle = (d / dashCount) * Math.PI * 2;
-      const dx = Math.cos(angle) * 2.4;
-      const dz = Math.sin(angle) * 2.4;
+      const dx = Math.cos(angle) * 2.4 * PLATE_SCALE;
+      const dz = Math.sin(angle) * 2.4 * PLATE_SCALE;
       const dashRmv = this.ensureRmv(dashObj, MAT_INDUCTION_EMERALD);
       const db = createBuilder();
       const didx: number[] = [];
@@ -983,7 +1459,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
       // Each dash is a tiny flat bar tangential to the circle
       const tangX = -Math.sin(angle);
       const tangZ = Math.cos(angle);
-      dvi = addBox(db, didx, dx, 0.005, dz, Math.abs(tangX) * 0.28 + 0.02, 0.004, Math.abs(tangZ) * 0.28 + 0.02, [0.18, 0.88, 0.52, 1], dvi);
+      dvi = addBox(db, didx, dx, 0.005, dz, Math.abs(tangX) * 0.21 + 0.02, 0.004, Math.abs(tangZ) * 0.21 + 0.02, [0.18, 0.88, 0.52, 1], dvi);
       db.appendIndices(didx);
       dashRmv.mesh = db.getMesh();
       db.updateMesh();
@@ -996,8 +1472,8 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const cridx: number[] = [];
     let crvi = 0;
     // Build axis-aligned bars then rotate the parent 45° around Y to achieve diagonal axis
-    crvi = addBox(crb, cridx,  0.0, 0.006, 0.0, 2.0, 0.003, 0.04, [0.18, 0.88, 0.52, 1], crvi);
-    crvi = addBox(crb, cridx,  0.0, 0.006, 0.0, 0.04, 0.003, 2.0, [0.18, 0.88, 0.52, 1], crvi);
+    crvi = addBox(crb, cridx,  0.0, 0.006, 0.0, 2.0 * PLATE_SCALE, 0.003, 0.04, [0.18, 0.88, 0.52, 1], crvi);
+    crvi = addBox(crb, cridx,  0.0, 0.006, 0.0, 0.04, 0.003, 2.0 * PLATE_SCALE, [0.18, 0.88, 0.52, 1], crvi);
     crb.appendIndices(cridx);
     crRmv.mesh = crb.getMesh();
     crb.updateMesh();
@@ -1008,7 +1484,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     const convRingObj = this.ensureChild(reticleRootObj, "PlatingConvergenceRing");
     const cvRmv = this.ensureRmv(convRingObj, MAT_INDUCTION_EMERALD);
     const cvb = createBuilder();
-    buildTube(cvb, buildRingCurve(3.8, 0, 36), 0.04, 6, [0.18, 0.88, 0.52, 1], 0);
+    buildTube(cvb, buildRingCurve(3.8 * PLATE_SCALE, 0, 36), 0.04, 6, [0.18, 0.88, 0.52, 1], 0);
     cvRmv.mesh = cvb.getMesh();
     cvb.updateMesh();
   }
@@ -1017,6 +1493,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     // 1. End-Grain Butcher Block board with juice groove & rubber corner feet
     const boardObj = findByName(prepStation, "BoardMesh");
     if (boardObj) {
+      this.boardObj = boardObj;
       boardObj.getTransform().setLocalPosition(new vec3(0, 0, 0));
       boardObj.getTransform().setLocalScale(new vec3(1, 1, 1));
       const rmv = boardObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
@@ -1072,62 +1549,50 @@ export class StationPropsBuilder extends BaseScriptComponent {
       gridRmv.mesh = gb.getMesh();
       gb.updateMesh();
 
-      // v5: no whole bulbs / salt + thyme ramekins — the board reads as a clean mise-en-place
-      // with diced rows between the guide lines (red onion, garlic, parsley, red + yellow pepper).
       const strayCube = findByName(boardObj, "ShallotHalfCut");
       if (strayCube) strayCube.enabled = false;
 
-      // 8 diced piles, centred between cut lines (never under the blade). Same objects / events
-      // as the old shallot medallions: CUT_REFERENCE_STEP nudges pile i, transfer clears them.
-      const vegMats = [MAT_RED_ONION, MAT_RED_ONION, MAT_GARLIC, MAT_PARSLEY, MAT_PARSLEY, MAT_RED_PEPPER, MAT_RED_PEPPER, MAT_YELLOW_PEPPER];
-      const vegDie = [0.3, 0.3, 0.22, 0.14, 0.14, 0.32, 0.32, 0.32];
-      this.shallotSlices = [];
-      for (let i = 0; i < 8; i++) {
-        const sliceObj = this.ensureChild(boardObj, `ShallotSlice_${i}`);
-        sliceObj.getTransform().setLocalPosition(new vec3(sliceRestX(i), 0.90, 1.2));
-        const sliceRmv = this.ensureRmv(sliceObj, vegMats[i]);
-        const pile = new MeshAcc();
-        const rnd = makeRng(1337 + i * 97);
-        const d = vegDie[i];
-        const flake = d < 0.15; // parsley: thin chopped flakes
-        const n = flake ? 60 : 26;
-        for (let k = 0; k < n; k++) {
-          const px = (rnd() - 0.5) * 0.95;
-          const pz = (rnd() - 0.5) * 3.6;
-          // mound: higher in the middle of the row
-          const mound = Math.max(0, 1 - (px * px) / 0.3 - (pz * pz) / 4.2);
-          const py = d * 0.9 + mound * (flake ? 0.35 : 0.5) * rnd();
-          const s = d * (0.75 + 0.5 * rnd());
-          pile.box(px, py, pz, s, flake ? s * 0.35 : s * 0.85, s * (flake ? 1.3 : 1.0), rnd() * Math.PI, (rnd() - 0.5) * 0.7);
-        }
-        pile.apply(sliceRmv);
-        sliceRmv.mainMaterial = vegMats[i];
-        this.shallotSlices.push(sliceObj);
-      }
-      // Stainless Steel Portion Ramekin Bowl + target rim (volumetric portion station)
-      const portionRamekinObj = this.ensureChild(boardObj, "PortionRamekinBowl");
-      portionRamekinObj.getTransform().setLocalPosition(new vec3(6.95, 0.90, 3.1));
-      const prRmv = this.ensureRmv(portionRamekinObj, MAT_CHROME);
-      const prb = createBuilder();
-      const portionBowlProfile: [number, number][] = [
-        [0.0,  0.00],
-        [2.1,  0.00],
-        [2.65, 1.85],
-        [2.45, 1.85],
-        [1.95, 0.25],
-        [0.0,  0.25],
-      ];
-      buildLathe(prb, portionBowlProfile, 48, [1, 1, 1, 1], 0, 0, 0, 0);
-      prRmv.mesh = prb.getMesh();
-      prb.updateMesh();
+      // WS9: a row of WHOLE vegetables between the guide lines (red onion, garlic, parsley bunch,
+      // tomato, yellow chilli). Each Step Cut converts one veg at a time (see CUT_MAP).
+      this.buildVegRow(boardObj);
 
-      // Cyan target rim around the top of the portion ramekin
+      // WS9 prep bowl: brushed-steel mixing bowl on the slab just in front of the board's right end.
+      // Empty at start; Transfer pours the diced veg into it (see startBowlPour).
+      const portionRamekinObj = this.ensureChild(boardObj, "PortionRamekinBowl");
+      portionRamekinObj.getTransform().setLocalPosition(BOWL_LOCAL);
+      const prRmv = this.ensureRmv(portionRamekinObj, MAT_CHROME);
+      const bowlAcc = new MeshAcc();
+      bowlAcc.lathe([[0, 0], [2.35, 0], [3.0, 2.15], [2.8, 2.15], [2.2, 0.3], [0, 0.3]], 56);
+      bowlAcc.torus(0, 2.15, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 2.92, 0.11, 0.09, 56, 6); // rolled lip
+      bowlAcc.apply(prRmv);
+      this.bowlObj = portionRamekinObj;
+
+      // Thin cyan target rim around the top of the bowl (portion reference cue)
       const rimObj = this.ensureChild(portionRamekinObj, "PortionTargetRim");
       const rimRmv = this.ensureRmv(rimObj, MAT_ARC_CYAN);
       const rimB = createBuilder();
-      buildTube(rimB, buildRingCurve(2.62, 1.9, 48), 0.045, 6, [1, 1, 1, 1], 0);
+      buildTube(rimB, buildRingCurve(3.06, 2.2, 56), 0.035, 6, [1, 1, 1, 1], 0);
       rimRmv.mesh = rimB.getMesh();
       rimB.updateMesh();
+
+      // WS10: measured portion (golden stock base) the bowl carries on pour 1 + a short droplet
+      // stream from the bowl lip into the pot while it pours.
+      const liq = this.ensureChild(portionRamekinObj, "BowlPortionLiquid");
+      const lAcc = new MeshAcc();
+      lAcc.disc(0, 0, 0, 2.5, 40, 0.06);
+      lAcc.apply(this.ensureRmv(liq, MAT_SAUCE));
+      liq.getTransform().setLocalPosition(new vec3(0, 1.45, 0));
+      liq.enabled = false;
+      this.bowlLiquid = liq;
+      const dropAcc = new MeshAcc();
+      dropAcc.ellipsoid(0, 0, 0, 0.22, 0.34, 0.22, 10, 6);
+      this.streamDrops = [];
+      for (let i = 0; i < STREAM_DROPS; i++) {
+        const d = this.ensureChild(boardObj, `PortionPourDrop_${i}`);
+        dropAcc.apply(this.ensureRmv(d, MAT_SAUCE));
+        d.enabled = false;
+        this.streamDrops.push(d);
+      }
     }
 
     // 2. Realistic Santoku Chef's Knife with pakkawood handle (LaserCutCurtain host)
@@ -1136,11 +1601,12 @@ export class StationPropsBuilder extends BaseScriptComponent {
       this.buildChefKnife(prepStation, laserObj);
     }
 
-    // 3. Portion Fill Level inside Ramekin (VolumetricPortionDome)
+    // 3. Portion reference volume inside the prep bowl (VolumetricPortionDome). Scale/material are
+    // driven by MetricPrepBlueprint (unchanged); WS9 only re-seats it in the bowl and keeps its
+    // visual hidden while the bowl is empty (shown once Fill Portion starts, hidden by the pour).
     const domeObj = findByName(prepStation, "VolumetricPortionDome");
     if (domeObj) {
-      domeObj.getTransform().setLocalPosition(new vec3(6.95, 0.95, 3.1)); // inside PortionRamekinBowl
-      domeObj.getTransform().setLocalScale(new vec3(0.4, 0.2, 0.4));
+      domeObj.getTransform().setLocalPosition(new vec3(BOWL_LOCAL.x, BOWL_LOCAL.y + 0.32, BOWL_LOCAL.z));
       const dRmv = domeObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
       if (dRmv) {
         const db = createBuilder();
@@ -1153,8 +1619,9 @@ export class StationPropsBuilder extends BaseScriptComponent {
         ];
         buildLathe(db, fillProfile, 40, [1, 1, 1, 1], 0, 0, 0, 0);
         dRmv.mesh = db.getMesh();
-        dRmv.mainMaterial = MAT_PARSLEY; // v5: bowl of chopped herbs
         db.updateMesh();
+        dRmv.enabled = false;
+        this.domeRmv = dRmv;
       }
     }
   }
@@ -1429,26 +1896,9 @@ export class StationPropsBuilder extends BaseScriptComponent {
       pb.updateMesh();
     }
 
-    // Long cast-iron handle (smooth sampled curve) with a rounded end cap
-    const handleObj = this.ensureChild(panObj, "SkilletHandle");
-    const hRmv = this.ensureRmv(handleObj, MAT_CAST_IRON_TEX);
-    const hb = createBuilder();
-    const handleCurve: [number, number, number][] = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12;
-      const u = 1 - t;
-      handleCurve.push([
-        u * u * -9.2 + 2 * u * t * -12.0 + t * t * -15.6,
-        u * u * 1.45 + 2 * u * t * 1.75 + t * t * 2.35,
-        u * u * 3.3 + 2 * u * t * 4.6 + t * t * 6.15,
-      ]);
-    }
-    let hvi = buildTube(hb, handleCurve, 0.6, 16, [1, 1, 1, 1], 0);
-    // end knob
-    const end = handleCurve[handleCurve.length - 1];
-    hvi = buildLathe(hb, [[0, -0.6], [0.45, -0.45], [0.6, 0], [0.45, 0.45], [0, 0.6]], 16, [1, 1, 1, 1], hvi, end[0], end[1], end[2]);
-    hRmv.mesh = hb.getMesh();
-    hb.updateMesh();
+    // WS9: tapered cast-iron handle (~half the pan diameter), flared riveted root, gently raised,
+    // ending in a teardrop with a hanging hole. Points rear-left in world (clear of board + saucier).
+    this.buildSkilletHandle(panObj);
 
     // (v4) legacy pour spouts read as a wireframe box over the salmon; keep them off.
     for (const legacy of ["SkilletPourSpout_L", "SkilletPourSpout_R"]) {
@@ -1469,7 +1919,13 @@ export class StationPropsBuilder extends BaseScriptComponent {
     salmonObj.getTransform().setLocalRotation(quat.fromEulerAngles(0, 18 * (Math.PI / 180) - SKILLET_YAW, 0));
     salmonObj.getTransform().setLocalScale(new vec3(1, 1, 1));
     const sRmv = this.ensureRmv(salmonObj, MAT_SALMON_SEARED);
-    this.buildSalmonMesh(sRmv, 5.3, 2.7, 1.9);
+    this.buildSalmonMesh(sRmv, 5.3, 2.7, SALMON_DOME_H);
+
+    // WS9-P2: seared skin on the pan side (closes the fillet underneath); SpatulaFlipRig rolls the
+    // fillet 180 deg about its long axis so this golden side ends up on top.
+    const skinObj = this.ensureChild(salmonObj, "SalmonCrispySkin");
+    const skinRmv = this.ensureRmv(skinObj, MAT_SALMON_CRISP);
+    this.buildSalmonSkinMesh(skinRmv, 5.3, 2.7, SALMON_SKIN_BULGE);
 
     // Rosemary sprig laid across the fillet
     const herbObj = this.ensureChild(salmonObj, "HerbSprig");
@@ -1499,6 +1955,13 @@ export class StationPropsBuilder extends BaseScriptComponent {
         o.getTransform().setLocalScale(new vec3(0.0001, 0.0001, 0.0001));
       }
     }
+
+    // WS10: gentle sear sizzle-steam over the fillet (station frame, so the quads face the viewer);
+    // only while the sear clock runs, until the salmon leaves for the plate.
+    this.skilletSteam = new SteamPlume(skilletStation, "SkilletSearSteamRoot", "SkilletSearSteam", {
+      count: 3, spread: 2.0, baseY: 2.6, rise: 4.0, size0: 2.2, size1: 2.0, alpha: 0.62,
+      speed: 0.34, sway: 0.45, z: 0.0, fadeIn: 1.2, fadeOut: 1.0,
+    });
   }
 
   /** Rounded fillet: superellipse footprint, flat-topped dome, tail tapering toward +X. */
@@ -1536,6 +1999,56 @@ export class StationPropsBuilder extends BaseScriptComponent {
         let nz = ds[0] * da[1] - ds[1] * da[0];
         if (nx * p[0] + ny * (p[1] + 2.0) + nz * p[2] < 0) { nx = -nx; ny = -ny; nz = -nz; }
         if (k === 0) { nx = 0; ny = 1; nz = 0; }
+        row.push(acc.v(p[0], p[1], p[2], nx, ny, nz, p[0] / (2 * a) + 0.5, p[2] / (2 * b0) + 0.5));
+      }
+      grid.push(row);
+    }
+    for (let k = 0; k < K; k++) {
+      for (let m = 0; m < M; m++) {
+        const m2 = (m + 1) % M;
+        acc.quad(grid[k][m], grid[k][m2], grid[k + 1][m2], grid[k + 1][m]);
+      }
+    }
+    acc.apply(rmv);
+  }
+
+  /**
+   * WS9-P2 seared skin: same superellipse footprint as the dome, bulging gently downward (y <= 0)
+   * and meeting the dome edge at y = 0, so the fillet is a closed two-sided shape.
+   */
+  private buildSalmonSkinMesh(rmv: RenderMeshVisual, a: number, b0: number, B: number): void {
+    const K = 6;
+    const M = 48;
+    const P = 4.0;
+    const halfW = (x: number): number => {
+      const t = Math.max(0, Math.min(1, (x / a + 1) / 2));
+      return b0 * (1 - 0.3 * Math.pow(t, 1.6));
+    };
+    const pt = (s: number, th: number): [number, number, number] => {
+      const c = Math.cos(th), sn = Math.sin(th);
+      const x = s * a * Math.sign(c) * Math.pow(Math.abs(c), 2 / P);
+      const z = s * halfW(x) * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / P);
+      const y = -B * Math.sqrt(Math.max(0, 1 - Math.pow(s, 4)));
+      return [x, y, z];
+    };
+    const acc = new MeshAcc();
+    const grid: number[][] = [];
+    for (let k = 0; k <= K; k++) {
+      const s = k / K;
+      const row: number[] = [];
+      for (let m = 0; m < M; m++) {
+        const th = (m / M) * Math.PI * 2;
+        const p = pt(s, th);
+        const e = 0.004;
+        const ps = pt(Math.min(1, s + e), th), ms = pt(Math.max(0, s - e), th);
+        const pa = pt(Math.max(s, 0.02), th + e), ma = pt(Math.max(s, 0.02), th - e);
+        const ds = [ps[0] - ms[0], ps[1] - ms[1], ps[2] - ms[2]];
+        const da = [pa[0] - ma[0], pa[1] - ma[1], pa[2] - ma[2]];
+        let nx = ds[1] * da[2] - ds[2] * da[1];
+        let ny = ds[2] * da[0] - ds[0] * da[2];
+        let nz = ds[0] * da[1] - ds[1] * da[0];
+        if (nx * p[0] + ny * (p[1] - 2.0) + nz * p[2] < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        if (k === 0) { nx = 0; ny = -1; nz = 0; }
         row.push(acc.v(p[0], p[1], p[2], nx, ny, nz, p[0] / (2 * a) + 0.5, p[2] / (2 * b0) + 0.5));
       }
       grid.push(row);
@@ -1587,6 +2100,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     // 1. Polished tri-ply stainless saucier — v5: 72-seg lathe, chrome PBR, rolled lip
     const potObj = findByName(sauceStation, "SaucepotPot");
     if (potObj) {
+      this.potObj = potObj;
       potObj.getTransform().setLocalPosition(new vec3(0, 0, 0));
       potObj.getTransform().setLocalScale(new vec3(1, 1, 1));
       const pRmv = potObj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
@@ -1615,46 +2129,33 @@ export class StationPropsBuilder extends BaseScriptComponent {
         pb.updateMesh();
       }
 
-      // Long stainless handle angled rear-right (never crosses the butcher block)
-      const handleObj = this.ensureChild(potObj, "SaucepanHandle");
-      const hRmv = this.ensureRmv(handleObj, MAT_CHROME);
-      const hb = createBuilder();
-      const HANDLE_YAW = 35 * (Math.PI / 180);
-      const hc = Math.cos(HANDLE_YAW);
-      const hs = Math.sin(HANDLE_YAW);
-      const handleCurve: [number, number, number][] = [];
-      for (let i = 0; i <= 12; i++) {
-        const t = i / 12;
-        const r = 5.25 + t * 7.4;
-        handleCurve.push([r * hc, 4.55 + t * 1.25 + Math.sin(t * Math.PI) * 0.25, -r * hs]);
-      }
-      let hvi = buildTube(hb, handleCurve, 0.4, 16, [1, 1, 1, 1], 0);
-      const he = handleCurve[handleCurve.length - 1];
-      hvi = buildLathe(hb, [[0, -0.4], [0.3, -0.3], [0.4, 0], [0.3, 0.3], [0, 0.4]], 16, [1, 1, 1, 1], hvi, he[0], he[1], he[2]);
-      hRmv.mesh = hb.getMesh();
-      hb.updateMesh();
-
-      // Domed rivets either side of the handle root
-      const rbx = 5.4 * hc;
-      const rbz = -5.4 * hs;
-      const rivetObj = this.ensureChild(potObj, "HandleRivet1");
-      const rRmv = this.ensureRmv(rivetObj, MAT_CHROME);
-      const rb = createBuilder();
-      const dome: [number, number][] = [[0, -0.22], [0.16, -0.16], [0.22, 0], [0.16, 0.16], [0, 0.22]];
-      let rvi = buildLathe(rb, dome, 12, [1, 1, 1, 1], 0, rbx + 0.5 * hs, 4.55, rbz + 0.5 * hc);
-      rvi = buildLathe(rb, dome, 12, [1, 1, 1, 1], rvi, rbx - 0.5 * hs, 4.55, rbz - 0.5 * hc);
-      rRmv.mesh = rb.getMesh();
-      rb.updateMesh();
+      // WS9: long curved stainless handle (rear-right, never crosses the butcher block) on a
+      // riveted mounting plate, ending in a flared tip with a hanging hole.
+      this.buildSaucierHandle(potObj);
 
       // Simmering tomato reduction flecked with herbs (textured, glossy, slightly domed)
+      // WS10: the saucier starts EMPTY. Two unit discs are scaled to the inner wall at the current
+      // level: golden portion base (pour 1) and the red herb-flecked sauce that spreads over it as
+      // the diced veg go in (pour 2).
+      const stockObj = this.ensureChild(potObj, "SaucierStockBase");
+      const stRmv = this.ensureRmv(stockObj, MAT_SAUCE);
+      const stock = new MeshAcc();
+      stock.disc(0, 0, 0, 1, 64, 0.04);
+      stock.apply(stRmv);
+      this.stockObj = stockObj;
       const sauceObj = this.ensureChild(potObj, "SimmeringLemonSauce");
       const sRmv = this.ensureRmv(sauceObj, MAT_SAUCE_TOMATO);
       const sauce = new MeshAcc();
-      sauce.disc(0, 3.86, 0, 4.83, 64, 0.08);
+      sauce.disc(0, 0, 0, 1, 64, 0.08);
       sauce.apply(sRmv);
+      this.sauceObj = sauceObj;
+      this.applySauceVisual();
 
-      // Soft steam wisps rising off the reduction
-      this.buildSteam(potObj);
+      // Soft steam wisps rising off the pot (silent until ingredients are in)
+      this.saucierSteam = new SteamPlume(potObj, "SaucierSteamRoot", "SaucierSteam", {
+        count: 3, spread: 1.6, baseY: 4.2, rise: 4.5, size0: 2.6, size1: 2.2, alpha: 0.75,
+        speed: 0.28, sway: 0.5, z: -0.5, fadeIn: 1.6, fadeOut: 1.4,
+      });
     }
 
     // 2. Suppress floating PotSimmerRing — burner arcs on the slab handle this now
@@ -1665,39 +2166,126 @@ export class StationPropsBuilder extends BaseScriptComponent {
     }
   }
 
-  private buildSteam(potObj: SceneObject): void {
-    const quad = new MeshAcc();
-    const q0 = quad.v(-0.5, 0, 0, 0, 0, 1, 0, 0);
-    const q1 = quad.v(0.5, 0, 0, 0, 0, 1, 1, 0);
-    const q2 = quad.v(0.5, 1, 0, 0, 0, 1, 1, 1);
-    const q3 = quad.v(-0.5, 1, 0, 0, 0, 1, 0, 1);
-    quad.quad(q0, q1, q2, q3);
-    this.steamWisps = [];
-    for (let i = 0; i < 3; i++) {
-      const o = this.ensureChild(potObj, `SaucierSteam_${i}`);
-      const m = makeTexturedPbr(TEX_STEAM, 0.0, 1.0, 1, 1, 1);
-      m.mainPass.blendMode = BlendMode.Normal;
-      m.mainPass.depthWrite = false;
-      m.mainPass.twoSided = true;
-      try {
-        (m.mainPass as any).Port_Emissive_N006 = new vec3(0.55, 0.55, 0.58);
-      } catch (e) {
-        // no emissive port
+  /** WS9 skillet handle (pan-local; the pan is yawed by SKILLET_YAW so +168 deg points rear-left in world). */
+  private buildSkilletHandle(panObj: SceneObject): void {
+    const phi = 168 * (Math.PI / 180);
+    const d = [Math.cos(phi), 0, Math.sin(phi)];
+    const s = [-d[2], 0, d[0]];
+    const lerp = (a: number, b: number, k: number): number => a + (b - a) * Math.max(0, Math.min(1, k));
+    const R0 = 9.5, R1 = 18.4;
+    const yAt = (t: number): number => 1.32 + 1.2 * t + 0.12 * Math.sin(Math.PI * t);
+    const curve: [number, number, number][] = [];
+    const rw: number[] = [];
+    const rh: number[] = [];
+    const N = 20;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const r = R0 + (R1 - R0) * t;
+      curve.push([d[0] * r, yAt(t), d[2] * r]);
+      rw.push(t < 0.12 ? lerp(1.0, 0.62, t / 0.12) : t < 0.75 ? lerp(0.62, 0.46, (t - 0.12) / 0.63) : lerp(0.46, 0.66, (t - 0.75) / 0.25));
+      rh.push(t < 0.12 ? lerp(0.62, 0.42, t / 0.12) : t < 0.75 ? lerp(0.42, 0.3, (t - 0.12) / 0.63) : lerp(0.3, 0.26, (t - 0.75) / 0.25));
+    }
+    const handleObj = this.ensureChild(panObj, "SkilletHandle");
+    const hRmv = this.ensureRmv(handleObj, MAT_CAST_IRON_TEX);
+    const acc = new MeshAcc();
+    acc.sweep(curve, rw, rh, 18, true);
+    // teardrop end with a hanging hole
+    const rl = 19.05;
+    acc.torus(d[0] * rl, yAt(1), d[2] * rl, d, s, [0, 1, 0], 0.6, 0.22, 0.24, 28, 8);
+    acc.apply(hRmv);
+
+    // Two steel rivets on the flared root (top) + their heads on the inside wall of the pan
+    const rivObj = this.ensureChild(panObj, "SkilletHandleRivets");
+    const rRmv = this.ensureRmv(rivObj, MAT_RIVET_STEEL);
+    const ra = new MeshAcc();
+    for (const side of [-1, 1]) {
+      const rr = 10.25;
+      ra.dome(d[0] * rr + s[0] * side * 0.45, 1.82, d[2] * rr + s[2] * side * 0.45, [s[0] * side * 0.45, 1, s[2] * side * 0.45], 0.17, 0.09);
+      const ri = 9.06;
+      ra.dome(d[0] * ri + s[0] * side * 0.42, 1.06, d[2] * ri + s[2] * side * 0.42, [-d[0] * 0.74, 0.67, -d[2] * 0.74], 0.2, 0.1);
+    }
+    ra.apply(rRmv);
+  }
+
+  /** WS9 saucier handle (pot-local, pot not yawed): long curved strap, riveted plate, hanging hole. */
+  private buildSaucierHandle(potObj: SceneObject): void {
+    const yaw = 30 * (Math.PI / 180);
+    const d = [Math.cos(yaw), 0, -Math.sin(yaw)];
+    const s = [-d[2], 0, d[0]];
+    const lerp = (a: number, b: number, k: number): number => a + (b - a) * Math.max(0, Math.min(1, k));
+    const R0 = 5.15, R1 = 14.75;
+    const yAt = (t: number): number => 4.1 + 2.4 * (1 - Math.pow(1 - t, 2.2));
+    const curve: [number, number, number][] = [];
+    const rw: number[] = [];
+    const rh: number[] = [];
+    const N = 22;
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const r = R0 + (R1 - R0) * t;
+      curve.push([d[0] * r, yAt(t), d[2] * r]);
+      rw.push(t < 0.1 ? lerp(0.52, 0.36, t / 0.1) : t < 0.8 ? lerp(0.36, 0.42, (t - 0.1) / 0.7) : lerp(0.42, 0.6, (t - 0.8) / 0.2));
+      rh.push(t < 0.1 ? lerp(0.3, 0.2, t / 0.1) : t < 0.8 ? lerp(0.2, 0.17, (t - 0.1) / 0.7) : lerp(0.17, 0.15, (t - 0.8) / 0.2));
+    }
+    const handleObj = this.ensureChild(potObj, "SaucepanHandle");
+    const hRmv = this.ensureRmv(handleObj, MAT_CHROME);
+    const acc = new MeshAcc();
+    acc.sweep(curve, rw, rh, 16, true);
+    const rl = 15.2;
+    acc.torus(d[0] * rl, yAt(1), d[2] * rl, d, s, [0, 1, 0], 0.52, 0.16, 0.14, 28, 8);
+    // riveted mounting plate on the outer wall
+    acc.box(d[0] * 5.24, 4.15, d[2] * 5.24, 0.07, 0.55, 0.8, yaw, 0);
+    acc.apply(hRmv);
+
+    const rivetObj = this.ensureChild(potObj, "HandleRivet1");
+    const rRmv = this.ensureRmv(rivetObj, MAT_RIVET_STEEL);
+    const ra = new MeshAcc();
+    for (const side of [-1, 1]) {
+      ra.dome(d[0] * 5.31 + s[0] * side * 0.48, 4.15, d[2] * 5.31 + s[2] * side * 0.48, d, 0.16, 0.08);
+      ra.dome(d[0] * 4.9 + s[0] * side * 0.48, 4.3, d[2] * 4.9 + s[2] * side * 0.48, [-d[0], 0, -d[2]], 0.17, 0.08);
+    }
+    ra.apply(rRmv);
+  }
+
+  /** WS10: place the base / red sauce discs for the current level + red spread (hidden when empty). */
+  private applySauceVisual(): void {
+    const y = this.potLevel;
+    const r = Math.max(0.05, potInnerR(y) - 0.04);
+    if (this.stockObj) {
+      const show = y > 0.01 && this.redCover < 0.999;
+      if (this.stockObj.enabled !== show) this.stockObj.enabled = show;
+      if (show) {
+        const tr = this.stockObj.getTransform();
+        tr.setLocalPosition(new vec3(0, this.redCover > 0 ? y - 0.03 : y, 0));
+        tr.setLocalScale(new vec3(r, 1, r));
       }
-      const rmv = this.ensureRmv(o, m);
-      quad.apply(rmv);
-      this.steamWisps.push({ obj: o, mat: m, phase: i / 3, x: (i - 1) * 1.6 });
+    }
+    if (this.sauceObj) {
+      const show = y > 0.01 && this.redCover > 0.001;
+      if (this.sauceObj.enabled !== show) this.sauceObj.enabled = show;
+      if (show) {
+        const tr = this.sauceObj.getTransform();
+        const rr = r * this.redCover;
+        tr.setLocalPosition(new vec3(0, y, 0));
+        tr.setLocalScale(new vec3(rr, 1, rr));
+      }
     }
   }
 
   private buildTransferConduit(arcRoot: SceneObject): void {
     // CRITICAL: Keep TransferArcTube — LEAF test asserts findSceneObjectByName("TransferArcTube") is truthy
     // and enabled=true after transfer tap. SpatialTransferArc.ts re-enables it on trigger.
+    // WS10: it must render nothing (the bowl carrying the food is the only transfer visual), so every
+    // mesh in its subtree is switched off and it stays collapsed.
     const arcTube = findByName(arcRoot, "TransferArcTube");
     if (arcTube) {
-      // Scale to near-invisible but keep enabled=false at rest; SpatialTransferArc.ts sets enabled=true on trigger
       arcTube.getTransform().setLocalScale(new vec3(0.0001, 0.0001, 0.0001));
       arcTube.enabled = false;
+      const hide = (o: SceneObject): void => {
+        const vis = o.getComponents("Component.RenderMeshVisual") as RenderMeshVisual[];
+        for (const v of vis) v.enabled = false;
+        for (let i = 0; i < o.getChildrenCount(); i++) hide(o.getChild(i));
+      };
+      hide(arcTube);
     }
 
     // Hide legacy stick conduit
@@ -1707,74 +2295,709 @@ export class StationPropsBuilder extends BaseScriptComponent {
       conduit.enabled = false;
     }
 
-    // Build luminous parabolic transfer ribbon — sibling of TransferArcTube
-    // Visible only during transfer (SpatialTransferArc.ts or eventBus enables this)
-    const ribbonObj = this.ensureChild(arcRoot, "TransferParabolicRibbon");
-    ribbonObj.enabled = false; // hidden at rest; enabled on transfer trigger
-    const ribbonRmv = this.ensureRmv(ribbonObj, MAT_TRANSFER_RIBBON);
-    const rb = createBuilder();
-    // Parabolic arc: prep board (X~+12, Y~1, Z~-2) → saucepot (X~0, Y~+5, Z~-10)
-    // Sampled from the same quadratic Bezier the flying shallots use in SpatialTransferArc
-    // (P0 board (11.5,1.2,-2.5) -> P1 (5.5,6.2,-6.5) -> P2 saucier mouth (0,1.6,-10.5)),
-    // so the ribbon and the pieces coincide.
-    // The ribbon lives under SpatialTransferArc (offset from StationsRoot), the pieces under
-    // StationsRoot, so convert into arcRoot-local space.
-    const o = arcRoot.getTransform().getLocalPosition();
-    const arcCurve: [number, number, number][] = [];
-    for (let i = 0; i <= 10; i++) {
-      const t = i / 10;
-      const u = 1 - t;
-      arcCurve.push([
-        u * u * 11.5 + 2 * u * t * 5.5 + t * t * 0.0 - o.x,
-        u * u * 1.2 + 2 * u * t * 6.2 + t * t * 1.6 - o.y,
-        u * u * -2.5 + 2 * u * t * -6.5 + t * t * -10.5 - o.z,
-      ]);
-    }
-    buildTube(rb, arcCurve, 0.22, 8, [0.22, 0.86, 0.98, 0.9], 0);
-    ribbonRmv.mesh = rb.getMesh();
-    rb.updateMesh();
+    // WS10: the luminous board -> saucier ribbon ("blue wire") is gone; no ribbon is built.
   }
 
   private bindSliceSteppingEvents(): void {
     this.eventBus.on("CUT_REFERENCE_STEP", (data: any) => {
-      const idx = (data && typeof data.sliceIndex === "number" ? data.sliceIndex : 1) - 1;
-      if (idx >= 0 && idx < this.shallotSlices.length) {
-        const slice = this.shallotSlices[idx];
-        // Cut slice falls away from the advancing blade (left) and toward the chef,
-        // staying on the board surface (y 0.90) so nothing sinks into the wood.
-        slice.getTransform().setLocalPosition(new vec3(sliceRestX(idx) - 0.3, 0.90, 2.1));
-      }
+      const cuts = data && typeof data.sliceIndex === "number" ? data.sliceIndex : this.chopCount + 1;
+      this.applyChopCount(cuts, true);
       this.isKnifeChopping = true;
       this.knifeAnimTimer = 0.0;
     });
 
     this.eventBus.on("STATION_STEP_COMPLETED", (data: any) => {
       if (data && data.stationId === "PREP") {
-        // Shallots transferred into saucepot: clear cutting board slices
-        for (let i = 0; i < this.shallotSlices.length; i++) {
-          this.shallotSlices[i].getTransform().setLocalScale(new vec3(0.001, 0.001, 0.001));
-        }
-        // Enrich saucepot reduction surface color
-        const root = this.getSceneObject();
-        const saucePlane = findByName(root, "SauceReductionPlane");
-        if (saucePlane) {
-          const rmv = saucePlane.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
-          if (rmv) rmv.mainMaterial = MAT_SAUCE;
-        }
+        // WS10: prep transferred -> two pours into the saucier (portion, then the diced veg)
+        this.startBowlPour();
+      }
+    });
+    // The DAG re-emits the transfer as TASK_COMPLETED(prep_shallots); startBowlPour is idempotent.
+    this.eventBus.on("TASK_COMPLETED", (data: any) => {
+      if (data && data.taskId === "prep_shallots") this.startBowlPour();
+    });
+
+    // Portion reference volume only shows while the bowl is waiting for prep
+    this.eventBus.on("VOLUME_DOME_UPDATED", (data: any) => {
+      if (this.domeRmv && this.seqStage === 0) {
+        this.domeRmv.enabled = !!data && data.fillRatio > 0.001;
       }
     });
 
+    // WS10: plating takes the pot (saucier steam off, salmon leaves the pan). If plating starts before
+    // the pours finished (manual time-warp path), land them immediately so the pot has its sauce.
+    this.eventBus.on("PLATING_STARTED", () => {
+      this.platingStarted = true;
+      if (this.seqStage > 0 && this.seqStage < 5) this.finishPoursNow();
+    });
+
     this.eventBus.on("RESET_REQUESTED", () => {
-      for (let i = 0; i < this.shallotSlices.length; i++) {
-        this.shallotSlices[i].getTransform().setLocalScale(new vec3(1, 1, 1));
-        this.shallotSlices[i].getTransform().setLocalPosition(new vec3(sliceRestX(i), 0.90, 1.2));
-      }
+      this.resetPrepVisuals();
       if (this.knifeRoot) {
         this.isKnifeChopping = false;
         this.knifeAnimTimer = 0.0;
         this.knifeRoot.getTransform().setLocalRotation(getKnifeRotation(0));
+        this.knifeRoot.getTransform().setLocalPosition(vec3.zero());
       }
     });
+  }
+
+  // ─────────────── WS9 public hook API (P2 spatula / P3 auto-cook + plating) ───────────────
+
+  /** Current stage per veg (0 whole, 1 partly cut, 2 diced), order = VEG_NAMES. */
+  public getVegStages(): number[] {
+    return this.vegItems.map((v) => v.stage);
+  }
+
+  public getVegNames(): string[] {
+    return VEG_NAMES.slice();
+  }
+
+  public getChopCount(): number {
+    return this.chopCount;
+  }
+
+  public isBowlFilled(): boolean {
+    return this.bowlFilled;
+  }
+
+  public isBowlPouring(): boolean {
+    return this.pourT >= 0;
+  }
+
+  /** WS10 transfer stage: 0 idle, 1 portion pour, 2 gap, 3 veg board->bowl, 4 veg pour, 5 done. */
+  public getTransferStage(): number {
+    return this.seqStage;
+  }
+
+  /** WS10: saucier liquid surface (pot-local y, 0 = empty) and red-sauce spread (0..1). */
+  public getSauceLevel(): number {
+    return this.potLevel;
+  }
+
+  public getSauceRedCover(): number {
+    return this.redCover;
+  }
+
+  /** WS10 plating pour: k 0..1 lowers the pot sauce from full to the served level. */
+  public setSauceServed(k: number): void {
+    if (this.potLevel <= 0.01) return;
+    const c = Math.max(0, Math.min(1, k));
+    this.potLevel = SAUCE_Y_FULL - (SAUCE_Y_FULL - SAUCE_Y_SERVED) * c;
+    this.applySauceVisual();
+  }
+
+  /** Prep bowl SceneObject (child of BoardMesh, board-local scale 0.68). */
+  public getBowlObject(): SceneObject | null {
+    return this.bowlObj ? this.bowlObj : null;
+  }
+
+  /** Veg root SceneObjects (each holds _Whole/_Partial/_Diced children). In the bowl after the pour. */
+  public getVegRoots(): SceneObject[] {
+    return this.vegItems.map((v) => v.root);
+  }
+
+  /** Plate mesh object (PorcelainCoupePlate, under PlatingServingStation; plate floor at local y 0.30). */
+  public getPlateObject(): SceneObject | null {
+    return this.plateObj ? this.plateObj : null;
+  }
+
+  public getPlateFloorLocalY(): number {
+    return 0.3;
+  }
+
+  public getPlateRimRadius(): number {
+    return 5.95 * PLATE_SCALE;
+  }
+
+  /**
+   * WS10 transfer (~12 s): pour 1 carries the measured portion (golden base) bowl -> saucier, short
+   * gap, the diced veg hop board -> bowl, pour 2 tips them into the pot (red herb sauce builds up).
+   * Safe to call repeatedly (only the first call starts the sequence).
+   */
+  public startBowlPour(): void {
+    if (this.seqStage !== 0 || this.vegItems.length === 0) return;
+    // finish any in-flight cut so the diced stage is what travels
+    for (const a of this.vegAnims) this.showStage(this.vegItems[a.veg], a.to, false);
+    this.vegAnims = [];
+    for (const p of this.vegPops) {
+      p.obj.getTransform().setLocalScale(vec3.one());
+      p.obj.getTransform().setLocalPosition(vec3.zero());
+    }
+    this.vegPops = [];
+    if (this.domeRmv) this.domeRmv.enabled = false;
+    if (this.bowlLiquid) {
+      this.bowlLiquid.enabled = true;
+      this.bowlLiquid.getTransform().setLocalScale(vec3.one());
+      this.bowlLiquid.getTransform().setLocalPosition(new vec3(0, 1.45, 0));
+    }
+    this.seqStage = 1;
+    this.seqT = 0;
+    if (!this.startSaucierPour(0)) {
+      // pot/board geometry missing: skip straight to the veg leg
+      this.potLevel = SAUCE_Y_BASE;
+      this.applySauceVisual();
+      if (this.bowlLiquid) this.bowlLiquid.enabled = false;
+      this.seqStage = 3;
+      this.pourT = 0;
+    }
+  }
+
+  /** WS10: land both pours instantly (plating began before they finished). */
+  private finishPoursNow(): void {
+    if (this.pourT >= 0) {
+      for (let i = 0; i < this.vegItems.length; i++) {
+        const v = this.vegItems[i];
+        v.root.getTransform().setLocalPosition(this.bowlSlot(i));
+        v.root.getTransform().setLocalScale(new vec3(BOWL_FILL_SCALE, BOWL_FILL_SCALE, BOWL_FILL_SCALE));
+      }
+      this.pourT = -1;
+    }
+    if (!this.bowlFilled) {
+      this.bowlFilled = true;
+      this.eventBus.emit("PREP_BOWL_FILLED", { stages: this.getVegStages() });
+    }
+    for (let i = 0; i < this.vegItems.length; i++) {
+      if (i === GARNISH_VEG) continue;
+      this.vegItems[i].root.enabled = false;
+    }
+    const g = this.vegItems[GARNISH_VEG];
+    if (g && !this.garnishTaken) {
+      g.root.getTransform().setLocalPosition(this.bowlSlot(GARNISH_VEG));
+      g.root.getTransform().setLocalRotation(quat.quatIdentity());
+    }
+    if (this.bowlObj) {
+      this.bowlObj.getTransform().setLocalPosition(BOWL_LOCAL);
+      this.bowlObj.getTransform().setLocalRotation(quat.quatIdentity());
+    }
+    if (this.bowlLiquid) this.bowlLiquid.enabled = false;
+    for (const d of this.streamDrops) d.enabled = false;
+    this.potLevel = SAUCE_Y_FULL;
+    this.redCover = 1;
+    this.applySauceVisual();
+    this.saucierActive = false;
+    this.seqStage = 5;
+    if (!this.bowlPoured) {
+      this.bowlPoured = true;
+      this.eventBus.emit("PREP_BOWL_POURED", {});
+    }
+  }
+
+  /** Hide the bowl contents (e.g. P3 garnish leaves the bowl for the plate). Reset restores. */
+  public emptyBowl(): void {
+    for (const v of this.vegItems) v.root.enabled = false;
+  }
+
+  /** WS9-P3: true once the bowl has tipped its diced veg into the saucier and returned home. */
+  public isBowlPouredIntoSaucier(): boolean {
+    return this.bowlPoured;
+  }
+
+  /** WS9-P3: true while the bowl is travelling to / pouring into / returning from the saucier. */
+  public isSaucierPourActive(): boolean {
+    return this.seqStage > 0 && this.seqStage < 5;
+  }
+
+  /**
+   * WS9-P3 plating: the parsley left in the bowl leaves for the plate. Hides it and returns its
+   * world position (start point of the garnish sprinkle), or the bowl's position if it is gone.
+   */
+  public takeGarnish(): vec3 | null {
+    const bowlWorld = this.bowlObj ? this.bowlObj.getTransform().getWorldPosition() : null;
+    const v = this.vegItems[GARNISH_VEG];
+    if (!v) return bowlWorld;
+    const p = v.root.getTransform().getWorldPosition();
+    const wasVisible = v.root.enabled && !this.garnishTaken;
+    v.root.enabled = false;
+    this.garnishTaken = true;
+    return wasVisible ? p : bowlWorld;
+  }
+
+  /** WS9-P3: saucier pot object (SaucepotPot) for the plating sauce tilt. */
+  public getSaucierPot(): SceneObject | null {
+    return this.potObj ? this.potObj : null;
+  }
+
+  /** Restore every veg to WHOLE on the board, empty the bowl, hide the portion volume. */
+  public resetPrepVisuals(): void {
+    this.vegAnims = [];
+    this.vegPops = [];
+    this.pourT = -1;
+    this.bowlFilled = false;
+    this.chopCount = 0;
+    this.saucierT = -1;
+    this.saucierActive = false;
+    this.bowlPoured = false;
+    this.garnishTaken = false;
+    // WS10: saucier back to EMPTY, no steam anywhere, transfer sequence idle
+    this.seqStage = 0;
+    this.seqT = 0;
+    this.platingStarted = false;
+    this.potLevel = 0;
+    this.redCover = 0;
+    this.applySauceVisual();
+    if (this.bowlLiquid) this.bowlLiquid.enabled = false;
+    for (const d of this.streamDrops) d.enabled = false;
+    if (this.saucierSteam) this.saucierSteam.setNow(0);
+    if (this.skilletSteam) this.skilletSteam.setNow(0);
+    if (this.bowlObj) {
+      this.bowlObj.getTransform().setLocalPosition(BOWL_LOCAL);
+      this.bowlObj.getTransform().setLocalRotation(quat.quatIdentity());
+    }
+    for (const v of this.vegItems) {
+      v.root.enabled = true;
+      v.root.getTransform().setLocalPosition(v.home);
+      v.root.getTransform().setLocalRotation(quat.quatIdentity());
+      v.root.getTransform().setLocalScale(vec3.one());
+      for (const st of v.stages) {
+        st.getTransform().setLocalScale(vec3.one());
+        st.getTransform().setLocalPosition(vec3.zero());
+      }
+      v.stage = 0;
+      this.showStage(v, 0, false);
+    }
+    if (this.domeRmv) this.domeRmv.enabled = false;
+  }
+
+  // ─────────────── WS9 progressive chop internals ───────────────
+
+  private stageForCuts(veg: number, cuts: number): number {
+    let st = 0;
+    for (let i = 0; i < Math.min(cuts, CUT_MAP.length); i++) {
+      if (CUT_MAP[i][0] === veg) st = Math.max(st, CUT_MAP[i][1]);
+    }
+    return st;
+  }
+
+  /** Converge every veg to the stage implied by `cuts` (idempotent); animate the ones that change. */
+  private applyChopCount(cuts: number, animate: boolean): void {
+    this.chopCount = cuts;
+    if (this.seqStage !== 0) return;
+    for (let i = 0; i < this.vegItems.length; i++) {
+      const v = this.vegItems[i];
+      const target = this.stageForCuts(i, cuts);
+      if (target === v.stage) continue;
+      if (animate) {
+        this.vegAnims = this.vegAnims.filter((a) => a.veg !== i);
+        this.vegAnims.push({ veg: i, from: v.stage, to: target, t: 0, step: 0 });
+      } else {
+        this.showStage(v, target, false);
+      }
+      v.stage = target; // logical state updates immediately; visuals follow the knife dip
+    }
+    this.eventBus.emit("PREP_VEG_STATE_CHANGED", { chopCount: cuts, stages: this.getVegStages(), names: VEG_NAMES.slice() });
+  }
+
+  private showStage(v: VegItem, stage: number, pop: boolean): void {
+    for (let k = 0; k < v.stages.length; k++) v.stages[k].enabled = k === stage;
+    if (pop) {
+      const obj = v.stages[stage];
+      this.vegPops = this.vegPops.filter((p) => p.obj !== obj);
+      this.vegPops.push({ obj, t: 0 });
+      obj.getTransform().setLocalScale(new vec3(0.55, 1, 0.55));
+    }
+  }
+
+  private updateVegAnimations(dt: number): void {
+    // Cut timeline: knife reaches the board at ~0.09 s -> new stage pops in. Single-cut veg
+    // (garlic, chilli) flash the partly-cut stage first, then scatter into dice at ~0.3 s.
+    if (this.vegAnims.length > 0) {
+      for (const a of this.vegAnims) {
+        a.t += dt;
+        const v = this.vegItems[a.veg];
+        const twoStep = a.from === 0 && a.to === 2;
+        if (a.step === 0 && a.t >= 0.09) {
+          if (twoStep) {
+            this.showStage(v, 1, true);
+            a.step = 1;
+          } else {
+            this.showStage(v, a.to, true);
+            a.step = 2;
+          }
+        } else if (a.step === 1 && a.t >= 0.3) {
+          this.showStage(v, 2, true);
+          a.step = 2;
+        }
+      }
+      this.vegAnims = this.vegAnims.filter((a) => a.step < 2);
+    }
+
+    // Scatter pop: pieces spread out from the cut (xz 0.55 -> 1) with a small hop
+    if (this.vegPops.length > 0) {
+      for (const p of this.vegPops) {
+        p.t += dt;
+        const k = Math.min(1, p.t / 0.32);
+        const e = 1 - Math.pow(1 - k, 3);
+        const s = 0.55 + 0.45 * e;
+        const tr = p.obj.getTransform();
+        tr.setLocalScale(new vec3(s, 1, s));
+        tr.setLocalPosition(new vec3(0, 0.3 * Math.sin(Math.PI * k) * (1 - k), 0));
+      }
+      this.vegPops = this.vegPops.filter((p) => p.t < 0.32);
+    }
+
+    // Board -> bowl pour: each veg hops along a short arc into its bowl slot and shrinks to fit
+    if (this.pourT >= 0) {
+      this.pourT += dt;
+      const n = this.vegItems.length;
+      for (let i = 0; i < n; i++) {
+        const v = this.vegItems[i];
+        const k = Math.max(0, Math.min(1, (this.pourT - i * POUR_STAGGER) / POUR_SECONDS));
+        const e = k * k * (3 - 2 * k);
+        const tgt = this.bowlSlot(i);
+        const p = vec3.lerp(v.home, tgt, e);
+        v.root.getTransform().setLocalPosition(new vec3(p.x, p.y + 3.2 * Math.sin(Math.PI * e), p.z));
+        const sc = 1 + (BOWL_FILL_SCALE - 1) * e;
+        v.root.getTransform().setLocalScale(new vec3(sc, sc, sc));
+      }
+      if (this.pourT >= POUR_SECONDS + POUR_STAGGER * (n - 1) + 0.02) {
+        this.pourT = -1;
+        this.bowlFilled = true;
+        this.eventBus.emit("PREP_BOWL_FILLED", { stages: this.getVegStages() });
+        // WS10 pour 2: the diced veg go into the saucier
+        this.seqStage = 4;
+        if (!this.startSaucierPour(1)) this.finishPoursNow();
+      }
+    }
+
+    if (this.saucierActive) this.updateSaucierPour(dt);
+
+    // WS10 gap between pour 1 and the veg leg
+    if (this.seqStage === 2) {
+      this.seqT += dt;
+      if (this.seqT >= POUR_GAP_SEC) {
+        this.seqStage = 3;
+        this.pourT = 0; // diced veg hop board -> bowl
+      }
+    }
+  }
+
+  // ─────────────── WS9-P3 bowl -> saucier pour ───────────────
+
+  /** Board-local point of a pot-local point (pot = SaucepotPot). */
+  private potToBoard(p: vec3): vec3 | null {
+    if (!this.potObj || !this.boardObj) return null;
+    const w = this.potObj.getTransform().getWorldTransform().multiplyPoint(p);
+    return this.boardObj.getTransform().getInvertedWorldTransform().multiplyPoint(w);
+  }
+
+  /** Start one bowl trip to the saucier (payload 0 = portion base, 1 = diced veg). */
+  private startSaucierPour(payload: number): boolean {
+    if (this.saucierActive || this.bowlPoured || !this.bowlObj) return false;
+    const rim = this.potToBoard(new vec3(0, 5.16, 0));
+    const surf = this.potToBoard(new vec3(0, 3.9, 0));
+    const edge = this.potToBoard(new vec3(5.5, 5.16, 0));
+    if (!rim || !surf || !edge) return false;
+    this.pourPayload = payload;
+    this.pourLevel0 = this.potLevel;
+    const rimR = Math.sqrt((edge.x - rim.x) * (edge.x - rim.x) + (edge.z - rim.z) * (edge.z - rim.z));
+    const d0 = new vec3(rim.x - BOWL_LOCAL.x, 0, rim.z - BOWL_LOCAL.z);
+    const dir = d0.length > 1e-3 ? d0.normalize() : new vec3(-1, 0, 0);
+    this.pourDir = dir;
+    this.sauceSurface = surf;
+    // bowl origin just outside the rim on the board side, ~3 units above it: tipped 65 deg, the
+    // bowl lip lands over the pot interior (see BOWL_TIP_ANGLE)
+    this.pourPose = rim.sub(dir.uniformScale(rimR + 0.6)).add(new vec3(0, 3.0, 0));
+    this.saucierT = -BOWL_POUR_DELAY;
+    this.saucierActive = true;
+    return true;
+  }
+
+  private bowlSlotOffset(i: number): vec3 {
+    return this.bowlSlot(i).sub(BOWL_LOCAL);
+  }
+
+  private updateSaucierPour(dt: number): void {
+    if (!this.bowlObj || !this.pourPose || !this.pourDir || !this.sauceSurface) {
+      this.saucierActive = false;
+      return;
+    }
+    this.saucierT += dt;
+    const t = this.saucierT;
+    if (t < 0) return;
+    const smooth = (k: number): number => {
+      const c = Math.max(0, Math.min(1, k));
+      return c * c * (3 - 2 * c);
+    };
+    const tTip = BOWL_TRAVEL_SEC;
+    const tSlide = tTip + BOWL_TIP_SEC * 0.6; // contents start to leave the bowl
+    const tBack = tTip + BOWL_TIP_SEC + BOWL_HOLD_SEC;
+    const tRet = tBack + BOWL_TIPBACK_SEC;
+    const tEnd = tRet + BOWL_RETURN_SEC;
+    const veg = this.pourPayload === 1;
+
+    // bowl position: out (arc) -> hold -> back (arc)
+    let pos: vec3;
+    if (t < tTip) {
+      const e = smooth(t / BOWL_TRAVEL_SEC);
+      pos = vec3.lerp(BOWL_LOCAL, this.pourPose, e).add(new vec3(0, 4.0 * Math.sin(Math.PI * e), 0));
+    } else if (t < tRet) {
+      pos = this.pourPose;
+    } else {
+      const e = smooth((t - tRet) / BOWL_RETURN_SEC);
+      pos = vec3.lerp(this.pourPose, BOWL_LOCAL, e).add(new vec3(0, 3.0 * Math.sin(Math.PI * e), 0));
+    }
+    // tip: mouth turns toward the pot (rotation axis up x dir takes +Y toward dir)
+    let tip = 0;
+    if (t >= tTip && t < tBack) tip = smooth((t - tTip) / BOWL_TIP_SEC);
+    else if (t >= tBack && t < tRet) tip = 1 - smooth((t - tBack) / BOWL_TIPBACK_SEC);
+    const axis = vec3.up().cross(this.pourDir).normalize();
+    const rot = quat.angleAxis(BOWL_TIP_ANGLE * tip, axis);
+    const bt = this.bowlObj.getTransform();
+    bt.setLocalPosition(pos);
+    bt.setLocalRotation(rot);
+
+    // WS10 liquid in the pot: pour 1 fills the golden base, pour 2 spreads the red sauce + raises it
+    const flowK = (tBack - tSlide);
+    if (!veg) {
+      const f = smooth((t - tSlide) / flowK);
+      if (t >= tSlide) {
+        this.potLevel = Math.max(this.pourLevel0, SAUCE_Y_FLOOR + (SAUCE_Y_BASE - SAUCE_Y_FLOOR) * f);
+        this.applySauceVisual();
+      }
+      if (this.bowlLiquid) {
+        const lt = this.bowlLiquid.getTransform();
+        lt.setLocalScale(new vec3(1 - 0.8 * f, 1, 1 - 0.8 * f));
+        lt.setLocalPosition(new vec3(0, 1.45 - 0.9 * f, 0));
+        if (f >= 0.999 && this.bowlLiquid.enabled) this.bowlLiquid.enabled = false;
+      }
+      this.updatePourStream(t - tSlide, flowK, pos, rot);
+    } else {
+      const f = smooth((t - tSlide - 0.3) / flowK);
+      if (f > 0) {
+        const y0 = Math.max(this.pourLevel0, SAUCE_Y_BASE);
+        this.potLevel = y0 + (SAUCE_Y_FULL - y0) * f;
+        this.redCover = 0.18 + 0.82 * f;
+        this.applySauceVisual();
+      }
+    }
+    const surfNow = this.potToBoard(new vec3(0, Math.max(SAUCE_Y_FLOOR, this.potLevel), 0));
+    if (surfNow) this.sauceSurface = surfNow;
+
+    // contents ride in the bowl; everything but the parsley slides out into the sauce (pour 2 only)
+    for (let i = 0; veg && i < this.vegItems.length; i++) {
+      const v = this.vegItems[i];
+      const tr = v.root.getTransform();
+      const carried = pos.add(rot.multiplyVec3(this.bowlSlotOffset(i)));
+      if (i === GARNISH_VEG) {
+        if (!this.garnishTaken) {
+          tr.setLocalPosition(carried);
+          tr.setLocalRotation(rot);
+        }
+        continue;
+      }
+      const order = i < GARNISH_VEG ? i : i - 1;
+      const k = (t - tSlide - order * 0.12) / BOWL_SLIDE_SEC;
+      if (k <= 0) {
+        tr.setLocalPosition(carried);
+        tr.setLocalRotation(rot);
+        continue;
+      }
+      if (k >= 1) {
+        if (v.root.enabled) v.root.enabled = false; // sunk into the reduction
+        continue;
+      }
+      const e = k * k; // accelerates out of the bowl
+      const land = this.sauceSurface.add(this.pourDir.uniformScale(-1.2 + 0.6 * order)).add(new vec3(0, 0.1, 0));
+      const p = vec3.lerp(carried, land, e).add(new vec3(0, 1.2 * Math.sin(Math.PI * k) * (1 - k), 0));
+      tr.setLocalPosition(p);
+      tr.setLocalRotation(quat.slerp(rot, quat.quatIdentity(), k));
+      const sc = BOWL_FILL_SCALE * (1 - 0.75 * smooth((k - 0.6) / 0.4));
+      tr.setLocalScale(new vec3(sc, sc, sc));
+    }
+
+    if (t >= tEnd) {
+      bt.setLocalPosition(BOWL_LOCAL);
+      bt.setLocalRotation(quat.quatIdentity());
+      this.saucierActive = false;
+      if (!veg) {
+        // pour 1 done: golden base in the pot; short gap, then the veg leg
+        if (this.bowlLiquid) this.bowlLiquid.enabled = false;
+        for (const d of this.streamDrops) d.enabled = false;
+        this.potLevel = Math.max(this.potLevel, SAUCE_Y_BASE);
+        this.applySauceVisual();
+        this.seqStage = 2;
+        this.seqT = 0;
+        return;
+      }
+      const g = this.vegItems[GARNISH_VEG];
+      if (g && !this.garnishTaken) {
+        g.root.getTransform().setLocalPosition(this.bowlSlot(GARNISH_VEG));
+        g.root.getTransform().setLocalRotation(quat.quatIdentity());
+      }
+      this.potLevel = SAUCE_Y_FULL;
+      this.redCover = 1;
+      this.applySauceVisual();
+      this.seqStage = 5;
+      this.bowlPoured = true;
+      this.eventBus.emit("PREP_BOWL_POURED", {});
+    }
+  }
+
+  /** WS10: golden droplets running from the tipped bowl lip down into the pot during pour 1. */
+  private updatePourStream(ft: number, dur: number, bowlPos: vec3, bowlRot: quat): void {
+    const on = ft >= 0 && ft < dur && !!this.pourDir && !!this.sauceSurface;
+    for (let i = 0; i < this.streamDrops.length; i++) {
+      const d = this.streamDrops[i];
+      const lead = (i / this.streamDrops.length) * 0.42;
+      if (!on || ft < lead) {
+        if (d.enabled) d.enabled = false;
+        continue;
+      }
+      const u = ((ft - lead) / 0.42) % 1;
+      const lip = bowlPos.add(bowlRot.multiplyVec3(this.pourDir!.uniformScale(2.95).add(new vec3(0, 2.15, 0))));
+      const land = this.sauceSurface!.add(this.pourDir!.uniformScale(-1.0));
+      const p = vec3.lerp(lip, land, u * u);
+      if (!d.enabled) d.enabled = true;
+      const tr = d.getTransform();
+      tr.setLocalPosition(p);
+      const s = 0.75 + 0.35 * u;
+      tr.setLocalScale(new vec3(s * 0.85, s * 1.25, s * 0.85));
+    }
+  }
+
+  private bowlSlot(i: number): vec3 {
+    const s = BOWL_SLOTS[i % BOWL_SLOTS.length];
+    // centre slot (parsley) sits highest so the mixed mound crowns just under the rim
+    const lift = i === 2 ? 0.75 : 0.35 + 0.08 * i;
+    return new vec3(BOWL_LOCAL.x + s[0], BOWL_FLOOR_Y + lift, BOWL_LOCAL.z + s[1]);
+  }
+
+  /** Builds the five veg, each with WHOLE / PARTIAL / DICED stage children (one mesh each). */
+  private buildVegRow(boardObj: SceneObject): void {
+    const rowRoot = this.ensureChild(boardObj, "PrepVegRow");
+    const mats = [MAT_RED_ONION, MAT_GARLIC, MAT_PARSLEY, MAT_RED_PEPPER, MAT_YELLOW_PEPPER];
+    const labels = ["Whole", "Partial", "Diced"];
+    this.vegItems = [];
+    for (let i = 0; i < VEG_NAMES.length; i++) {
+      const root = this.ensureChild(rowRoot, `Veg_${VEG_NAMES[i]}`);
+      const home = new vec3(VEG_X[i], VEG_TOP_Y, VEG_Z);
+      root.getTransform().setLocalPosition(home);
+      const stages: SceneObject[] = [];
+      const accs: MeshAcc[] = [new MeshAcc(), new MeshAcc(), new MeshAcc()];
+      const extras: (MeshAcc | null)[] = [null, null, null]; // green calyx / stems
+      this.buildVegGeometry(i, accs, extras);
+      for (let k = 0; k < 3; k++) {
+        const st = this.ensureChild(root, `Veg_${VEG_NAMES[i]}_${labels[k]}`);
+        const rmv = this.ensureRmv(st, mats[i]);
+        accs[k].apply(rmv);
+        const ex = extras[k];
+        if (ex) ex.apply(this.ensureRmv(this.ensureChild(st, `Veg_${VEG_NAMES[i]}_${labels[k]}_Stem`), MAT_PARSLEY));
+        stages.push(st);
+      }
+      const item: VegItem = { root, stages, stage: 0, home };
+      this.showStage(item, 0, false);
+      this.vegItems.push(item);
+    }
+  }
+
+  private buildVegGeometry(i: number, a: MeshAcc[], ex: (MeshAcc | null)[]): void {
+    const H = Math.PI / 2;
+    switch (i) {
+      case 0: {
+        // Red onion: whole bulb -> halved (knife on line 1) with slices falling left -> dice
+        a[0].lathe(ONION_PROFILE, 22);
+        a[1].setXform(0.1, 0, 0);
+        a[1].lathe(ONION_PROFILE, 12, 0, 0, -H, H);
+        a[1].cutFace(ONION_PROFILE, -1);
+        const slices: [number, number, number][] = [[-0.3, 0.97, 0.12], [-0.66, 0.86, 0.38], [-1.05, 0.66, 0.75]];
+        for (const [x, k, roll] of slices) {
+          a[1].setXform(x, 0, 0, 0, 0, roll);
+          a[1].crossSlab(ONION_PROFILE, k, 0.24);
+        }
+        a[1].clearXform();
+        dicePile(a[2], 4101, 1.12, 1.5, 0.19, 42, false);
+        break;
+      }
+      case 1: {
+        // Garlic bulb (lobed cloves) -> loose cloves -> fine mince
+        a[0].lathe(GARLIC_PROFILE, 32, 8, 0.07);
+        const cloves: [number, number, number][] = [[-0.3, -0.42, 0.3], [0.28, -0.2, -0.5], [-0.22, 0.38, 1.2], [0.3, 0.5, 0.2]];
+        for (const [x, z, yaw] of cloves) a[1].ellipsoid(x, 0.16, z, 0.17, 0.17, 0.33, 10, 6, yaw);
+        dicePile(a[2], 4202, 0.58, 1.3, 0.115, 36, false);
+        break;
+      }
+      case 2: {
+        // Parsley bunch lying along z (stems to the front) -> left half chopped -> flakes
+        const rnd = makeRng(4303);
+        const leaves: [number, number, number][] = [];
+        for (let k = 0; k < 10; k++) leaves.push([-1.2 + 2.4 * ((k + rnd() * 0.6) / 10), 0.24 + rnd() * 0.18, -1.8 + rnd() * 2.2]);
+        const stems = new MeshAcc();
+        const stemsPartial = new MeshAcc();
+        const sr = [0.05, 0.05, 0.045];
+        for (let k = 0; k < 6; k++) {
+          const x = -0.9 + (1.8 * k) / 5;
+          stems.sweep([[0.1, 0.07, 2.3], [0.05 + x * 0.3, 0.08, 1.4], [x, 0.12, 0.3]], sr, sr, 5, true);
+          if (x > 0.1) stemsPartial.sweep([[0.6, 0.07, 2.3], [0.5 + x * 0.2, 0.08, 1.4], [x, 0.12, 0.3]], sr, sr, 5, true);
+        }
+        for (const l of leaves) {
+          a[0].ellipsoid(l[0], l[1], l[2], 0.46, 0.17, 0.46, 14, 5, l[0] * 3, 0, 6, 0.18);
+          if (l[0] > 0.1) a[1].ellipsoid(l[0], l[1], l[2], 0.46, 0.17, 0.46, 14, 5, l[0] * 3, 0, 6, 0.18);
+        }
+        a[1].setXform(-0.85, 0, -0.2);
+        dicePile(a[1], 4304, 0.55, 1.3, 0.13, 40, true);
+        a[1].clearXform();
+        ex[0] = stems;
+        ex[1] = stemsPartial;
+        dicePile(a[2], 4305, 1.3, 1.6, 0.13, 78, true);
+        break;
+      }
+      case 3: {
+        // Tomato with calyx -> halved (knife on line 6) + two slices -> dice
+        a[0].lathe(TOMATO_PROFILE, 30, 5, 0.035);
+        const calyx = new MeshAcc();
+        for (let k = 0; k < 5; k++) {
+          const ang = (k * 72 * Math.PI) / 180;
+          calyx.box(0.26 * Math.cos(ang), 1.37, -0.26 * Math.sin(ang), 0.3, 0.025, 0.07, ang, -0.12);
+        }
+        const cr = [0.06, 0.055, 0.05];
+        calyx.sweep([[0, 1.3, 0], [0.02, 1.45, 0.01], [0.06, 1.6, 0.03]], cr, cr, 6, true);
+        ex[0] = calyx;
+        a[1].setXform(0.1, 0, 0);
+        a[1].lathe(TOMATO_PROFILE, 15, 5, 0.035, -H, H);
+        a[1].cutFace(TOMATO_PROFILE, -1);
+        const slices: [number, number, number][] = [[-0.35, 0.95, 0.28], [-0.88, 0.7, 0.85]];
+        for (const [x, k, roll] of slices) {
+          a[1].setXform(x, 0, 0, 0, 0, roll);
+          a[1].crossSlab(TOMATO_PROFILE, k, 0.3);
+        }
+        a[1].clearXform();
+        dicePile(a[2], 4406, 1.25, 1.5, 0.23, 38, false);
+        break;
+      }
+      case 4: {
+        // Yellow chilli lying along z with a green stem -> tip + rings -> rings and bits
+        const body = (acc: MeshAcc, t1: number): void => {
+          const c: [number, number, number][] = [];
+          const r: number[] = [];
+          const N = 14;
+          for (let k = 0; k <= N; k++) {
+            const t = (k / N) * t1;
+            const rr = t < 0.85 ? 0.04 + 0.32 * Math.pow(Math.min(1, t / 0.7), 0.6) : 0.36 - 0.08 * ((t - 0.85) / 0.15);
+            c.push([0.18 * Math.sin(Math.PI * t) - 0.05, rr * 0.95, -1.7 + 3.5 * t]);
+            r.push(rr);
+          }
+          acc.sweep(c, r, r.map((x) => x * 0.9), 12, true);
+        };
+        body(a[0], 1);
+        const stem = new MeshAcc();
+        stem.ellipsoid(-0.05, 0.28, 1.8, 0.3, 0.26, 0.12, 10, 5);
+        const str = [0.07, 0.065, 0.055, 0.05];
+        stem.sweep([[-0.05, 0.3, 1.8], [-0.05, 0.4, 2.05], [0.05, 0.5, 2.3], [0.15, 0.55, 2.45]], str, str, 6, true);
+        ex[0] = stem;
+        body(a[1], 0.62);
+        for (let k = 0; k < 4; k++) {
+          a[1].torus(0.05 - k * 0.12, 0.3, 0.75 + k * 0.32, [1, 0, 0], [0, 1, 0], [0, 0, 1], 0.24, 0.08, 0.09, 12, 5);
+        }
+        const rnd = makeRng(4507);
+        for (let k = 0; k < 11; k++) {
+          const R = 0.18 + rnd() * 0.08;
+          a[2].torus((rnd() - 0.5) * 1.0, 0.07, -1.5 + 3.2 * (k / 10) + (rnd() - 0.5) * 0.2, [1, 0, 0], [0, 0, 1], [0, 1, 0], R, 0.06, 0.06, 10, 4);
+        }
+        dicePile(a[2], 4508, 0.5, 1.5, 0.11, 12, false);
+        break;
+      }
+    }
   }
 
   private ensureChild(parent: SceneObject, name: string): SceneObject {
