@@ -4,7 +4,17 @@
 Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (account taylankaraca78). Plan: `~/.claude/plans/parsed-tumbling-bird.md`. Visual target: `devpost/reference/v4-target-render.webp`.
 
 ## HANDOVER – read first if you are a new agent
-- **States (exactly three, in this order):** `## Yet to complete` → `## In progress` → `## Completed`. Move a line between sections as work changes; never duplicate; update this file BEFORE and AFTER every task.
+- **States (exactly three, in this order):** `## Yet to complete` → `## In progress` → `## Completed`
+### WS10 – (DONE: 10/10 LEAF, 0 TS errors) User feedback after WS9 (screenshot `images/3.png`: blue curved "wire" from board to saucier during transfer)
+- [x] 1 Remove the wire-like blue ribbon during transfer (TransferArcTube must stay ENABLED for LEAF but be visually invisible; bowl carrying the food is the only visual)
+- [x] 2 Add steam to the final plated dish
+- [x] 3 Saucier starts EMPTY (no sauce at start)
+- [x] 4 Transfer happens twice in sequence: first the measured PORTION (volumetric portion) into the saucier, second the diced VEGETABLES; sauce visibly builds up (base → red sauce with herbs); Btn_Transfer LEAF strings unchanged; Auto Cook updated for the longer transfer; reset empties again
+- [x] 5 Steam on pan and saucier only in the correct time windows: skillet steam while searing, saucier steam only after ingredients are in until plating tilt; none when idle/empty
+- [x] 6 Slightly change the colour of the counter base (subtle shift, keep additive-display brightness; report before/after hex)
+- [x] 7 Recompile 0 errors, 10/10 LEAF, screenshots; update README/design brief mention
+
+. Move a line between sections as work changes; never duplicate; update this file BEFORE and AFTER every task.
 - **Project:** `Miseflow/` (Lens Studio, TS). Scripts `Miseflow/Assets/Scripts`, tests `Miseflow/Assets/Tests` (LeafIndex.ts, 9 scenarios). README.md has the upgrade log + recording checklist; design brief at `devpost/design-brief.md` (identical copy in `Miseflow/devpost/`).
 - **Tools:** drive Lens Studio only via MCP (`mcp__lens-studio__*`, `mcp__lens-studio-codemode__execute`); one agent at a time may drive the preview. Recompile with RecompileTypeScriptTool, then run LEAF in preview.
 - **Preview camera pose (re-set before screenshots/recording):** MovePreviewCamera pos (0,25.1,-21.4) lookAt (0,-4.9,-73.4). Camera Object has DeviceTracking so Scene.scene camera transform is ignored.
@@ -23,15 +33,6 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 - [ ] Decide with user: (1) real vision on AI Vision button (frame → claude-sonnet-5-5 → JSON → ProposalGate → DAG), (2) drift re-plan assistant (task graph → Claude → validated re-plan + coaching line), (3) recipe-to-DAG compiler (stretch), (4) voice (skip)
 - [ ] Spike: one live call from Lens Studio preview (does InternetModule fetch work in preview? latency?) with the key from `.env` via `tools\sync-env.ps1`
 - [ ] Devpost page returned 403 to WebFetch and the Devpost connector is unauthenticated; rules/criteria taken from the Drive audit (Design, Technical Implementation, Innovation, Presentation; <3 min preview video; judges don't run the repo)
-
-### WS10 – User feedback after WS9 (screenshot `images/3.png`: blue curved "wire" from board to saucier during transfer)
-- [ ] 1 Remove the wire-like blue ribbon during transfer (TransferArcTube must stay ENABLED for LEAF but be visually invisible; bowl carrying the food is the only visual)
-- [ ] 2 Add steam to the final plated dish
-- [ ] 3 Saucier starts EMPTY (no sauce at start)
-- [ ] 4 Transfer happens twice in sequence: first the measured PORTION (volumetric portion) into the saucier, second the diced VEGETABLES; sauce visibly builds up (base → red sauce with herbs); Btn_Transfer LEAF strings unchanged; Auto Cook updated for the longer transfer; reset empties again
-- [ ] 5 Steam on pan and saucier only in the correct time windows: skillet steam while searing, saucier steam only after ingredients are in until plating tilt; none when idle/empty
-- [ ] 6 Slightly change the colour of the counter base (subtle shift, keep additive-display brightness; report before/after hex)
-- [ ] 7 Recompile 0 errors, 10/10 LEAF, screenshots; update README/design brief mention
 
 ### WS9 – User-requested realism + full-flow pass (user request after WS8; image `images/2.png` = skillet close-up showing oversized plate and too-broad burner arcs)
 **WS9 design decisions (follow these):**
@@ -82,7 +83,7 @@ Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (accou
 
 ## In progress
 
-- [ ] [O] **WS10 – Transfer/steam/base polish** (agent running, code mode): see "WS10" in Yet-to-complete list below for the 5 sub-items. Also pending: user's go-ahead to commit WS9 (+WS10).
+- [ ] [ME] Waiting for the user's decision on WS11 (real AI Vision: option 1 and/or 2, and network access for recording). WS10 is done and pushed; VisionConfig compiled and covered by the 10/10 run.
 
 ---
 
