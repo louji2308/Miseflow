@@ -1,6 +1,16 @@
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
-
+import { DishAssetBuilders, IDishAssetBuilder, PantryContext, ProteinSpec, StagedDishItem, StarchTint } from "./AI/IDishAssetBuilder";
+import { getPreset } from "./AI/DishLibraryConfig";
+import { canonicalProteinNumber, getCatalogEntry, PROTEIN_REGISTRY } from "./AI/AssetPageTable";
+import { VesselSlotId } from "./AI/SpatialSlotAllocator";
+import { PrepSlotEntry, Rgb, UniversalDishBlueprint } from "./AI/UniversalDishSchema";
+import { buildVegStages, resolveVeg } from "./VegGenerators";
+import { StarchProp, starchGenFor } from "./StarchGenerators";
+import { ProteinProp, ProteinRegistry, ProteinTint, proteinGenFor, registerPanFloor } from "./ProteinGenerators";
+import { HeroWareController, warePlanFor, WarePlan } from "./VesselGenerators";
+import { ToolWareController } from "./ToolGenerators";
+import { PantryController } from "./PantryGenerators";
 const BASE_PBR_TEMPLATE = requireAsset("../Materials/Mat_DarkSlate.mat") as Material;
 
 export function makePbrMaterial(
@@ -447,7 +457,36 @@ export class MeshAcc {
     for (let i = 0; i < segs; i++) this.tri(c, ring + i, ring + i + 1);
   }
 
+  triCount(): number {
+    return this.idx.length / 3;
+  }
+
+  /** Axis-aligned bounds of the stored (already transformed) positions: [minX, minY, minZ, maxX, maxY, maxZ]. */
+  bounds(): number[] {
+    const o = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+    for (let i = 0; i < this.pos.length; i += 3) {
+      for (let c = 0; c < 3; c++) {
+        o[c] = Math.min(o[c], this.pos[i + c]);
+        o[c + 3] = Math.max(o[c + 3], this.pos[i + c]);
+      }
+    }
+    return o;
+  }
+
+  /** Uniform scale about the origin, then lift by dy (normals unchanged). */
+  scaleShift(s: number, dy: number): void {
+    for (let i = 0; i < this.pos.length; i += 3) {
+      this.pos[i] *= s;
+      this.pos[i + 1] = this.pos[i + 1] * s + dy;
+      this.pos[i + 2] *= s;
+    }
+  }
+
   apply(rmv: RenderMeshVisual): void {
+    rmv.mesh = this.toMesh();
+  }
+
+  toMesh(): RenderMesh {
     const b = createBuilder();
     const verts: number[] = [];
     const n = this.count();
@@ -461,8 +500,9 @@ export class MeshAcc {
     }
     b.appendVerticesInterleaved(verts);
     b.appendIndices(this.idx);
-    rmv.mesh = b.getMesh();
+    const mesh = b.getMesh();
     b.updateMesh();
+    return mesh;
   }
 }
 
@@ -553,6 +593,10 @@ const SKILLET_YAW = -66 * (Math.PI / 180); // swings the long handle to the rear
 // bulge of the seared skin below it. SpatulaFlipRig pivots the flip on these.
 export const SALMON_DOME_H = 1.9;
 export const SALMON_SKIN_BULGE = 0.22;
+// A3: skillet inner floor (pan-local): contact height (oil pool / fillet rest y) and usable flat radius of the
+// lathe floor ([7.9, 0] .. [8.05, 0.5]); proteins query it through ProteinGenerators.queryPanFloor("SkilletPan").
+export const SKILLET_FLOOR_Y = 0.5;
+export const SKILLET_FLOOR_R = 7.9;
 const SAUCIER_POS = new vec3(0.0, COOKWARE_Y, -10.5);
 const PREP_POS = new vec3(10.5, 0.64, -3.0); // board feet (local -1.27 * 0.68) rest on slab top
 const PLATE_POS = new vec3(0.0, COOKWARE_Y, 4.5);
@@ -565,6 +609,8 @@ const PLATE_SCALE = 0.75;
 // Knife edge sits on cut line 0; MetricPrepBlueprint steps +1.5 per chop (8 chops -> x +3.5),
 // so everything else on the board lives at x >= 4.3 to stay out of the blade sweep.
 const KNIFE_REST_X = -8.5;
+// K1a: knife stop / lane pitch (MetricPrepBlueprint LANE_STEP_CM), independent of the dish's cut spacing
+const LANE_PITCH = 1.5;
 
 // ─── WS9 progressive chop (board-local units; board top y = 0.905) ───
 // Five whole veg sit left->right across the 8 cutting lanes (lane i = x -8.5+1.5i .. +1.5). After
@@ -598,26 +644,30 @@ const BOWL_TIP_ANGLE = 65 * (Math.PI / 180);
 const POUR_GAP_SEC = 0.5; // pause between the two pours (bowl home, veg hop into it)
 const GARNISH_VEG = 2; // parsley
 // WS10 saucier contents (pot-local y; pot lathe inner wall as [y, r])
-const POT_INNER: [number, number][] = [[0.48, 0.0], [0.62, 3.6], [1.2, 4.64], [3.8, 4.84], [4.86, 5.0]];
+export const POT_INNER: [number, number][] = [[0.48, 0.0], [0.62, 3.6], [1.2, 4.64], [3.8, 4.84], [4.86, 5.0]];
 const SAUCE_Y_FLOOR = 0.72;
 const SAUCE_Y_BASE = 2.3; // after the portion pour
 const SAUCE_Y_FULL = 3.86; // after the veg pour
 const SAUCE_Y_SERVED = 3.3; // after the plating pour
 const STREAM_DROPS = 6;
 
+let potInner: [number, number][] = POT_INNER; // A4a: the handi swaps in its own inner wall (same fill levels)
+
 function potInnerR(y: number): number {
-  if (y <= POT_INNER[0][0]) return 0;
-  for (let i = 1; i < POT_INNER.length; i++) {
-    const a = POT_INNER[i - 1];
-    const b = POT_INNER[i];
+  if (y <= potInner[0][0]) return 0;
+  for (let i = 1; i < potInner.length; i++) {
+    const a = potInner[i - 1];
+    const b = potInner[i];
     if (y <= b[0]) return a[1] + ((b[1] - a[1]) * (y - a[0])) / (b[0] - a[0]);
   }
-  return POT_INNER[POT_INNER.length - 1][1];
+  return potInner[potInner.length - 1][1];
 }
 
-const ONION_PROFILE: [number, number][] = [[0, 0], [0.4, 0.03], [0.78, 0.18], [0.98, 0.45], [1.04, 0.75], [0.96, 1.05], [0.72, 1.32], [0.4, 1.52], [0.14, 1.66], [0.05, 1.8], [0, 1.84]];
-const GARLIC_PROFILE: [number, number][] = [[0, 0], [0.25, 0.02], [0.5, 0.12], [0.6, 0.32], [0.58, 0.55], [0.45, 0.76], [0.25, 0.92], [0.1, 1.02], [0.06, 1.2], [0, 1.24]];
-const TOMATO_PROFILE: [number, number][] = [[0, 0.04], [0.45, 0], [0.85, 0.12], [1.07, 0.42], [1.1, 0.72], [0.95, 1.05], [0.62, 1.28], [0.25, 1.37], [0, 1.34]];
+/** v5 A1: one lane's stage meshes [stage 0..2][part 0 body, 1 _Stem accent, 2 _Detail] + their materials. */
+export interface VegLaneMeshes {
+  meshes: (RenderMesh | null)[][];
+  mats: Material[];
+}
 
 interface VegItem {
   root: SceneObject;
@@ -632,19 +682,6 @@ interface VegCutAnim {
   to: number;
   t: number;
   step: number; // 0 = waiting for knife dip, 1 = partial shown (two-step flash), 2 = done
-}
-
-/** Small heap of diced pieces (or thin herb flakes) mounded around the local origin, resting on y = 0. */
-function dicePile(acc: MeshAcc, seed: number, hx: number, hz: number, d: number, n: number, flake: boolean): void {
-  const rnd = makeRng(seed);
-  for (let k = 0; k < n; k++) {
-    const px = (rnd() - 0.5) * 2 * hx;
-    const pz = (rnd() - 0.5) * 2 * hz;
-    const mound = Math.max(0, 1 - 0.8 * (px / hx) * (px / hx) - 0.8 * (pz / hz) * (pz / hz));
-    const s = d * (0.75 + 0.5 * rnd());
-    const py = (flake ? s * 0.35 : s * 0.85) + mound * (flake ? 0.22 : 0.38) * rnd();
-    acc.box(px, py, pz, s, flake ? s * 0.3 : s * 0.85, s * (flake ? 1.3 : 1.0), rnd() * Math.PI, (rnd() - 0.5) * 0.7);
-  }
 }
 
 const BASE_KNIFE_PITCH = 0.0;
@@ -1130,6 +1167,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
   // WS9 progressive chop + prep bowl state (hook points for P2/P3: see public API below)
   private vegItems: VegItem[] = [];
+  private vegOriginal: VegLaneMeshes[] = [];
   private vegAnims: VegCutAnim[] = [];
   private vegPops: { obj: SceneObject; t: number }[] = [];
   private chopCount: number = 0;
@@ -1148,11 +1186,26 @@ export class StationPropsBuilder extends BaseScriptComponent {
   private pourPose?: vec3;
   private pourDir?: vec3; // horizontal unit vector bowl -> pot (board-local)
   private sauceSurface?: vec3; // sauce surface centre (board-local)
+  // v5 dish morph hooks (StationPropsDishBuilder): cut grid + saucier steam burst
+  private cutGridObj?: SceneObject;
+  private cutGridPos0: vec3 = vec3.zero();
+  private cutGridRot0: quat = quat.quatIdentity();
+  private cutSpacingCm: number = 1.5;
+  private cutAngleDeg: number = 0;
+  private steamBurstUntil: number = -1;
+  // A4a service ware: active #342/#343 piece (null = the coupe plate) + plating reticle fit
+  private servePiece: SceneObject | null = null;
+  private serveFloorY: number = 0.3;
+  private serveRimR: number = 0;
+  private reticleFit: number = 1;
 
   onAwake(): void {
     this.createEvent("OnStartEvent").bind(() => {
       this.upgradeAllStations();
       this.bindSliceSteppingEvents();
+      // v5: real dish builder (existing meshes only: cut grid, sauce + protein tints)
+      DishAssetBuilders.register(new StationPropsDishBuilder(this));
+      registerPanFloor("SkilletPan", { y: SKILLET_FLOOR_Y, r: SKILLET_FLOOR_R, curve: 0 });
     });
 
     this.createEvent("UpdateEvent").bind(() => {
@@ -1187,7 +1240,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
     // Skillet: only while the sear clock has run, until the salmon leaves for the plate.
     const dt = getDeltaTime();
     if (this.saucierSteam) {
-      this.saucierSteam.target = this.potLevel > SAUCE_Y_FLOOR + 0.2 && !this.platingStarted ? 1 : 0;
+      this.saucierSteam.target = (this.potLevel > SAUCE_Y_FLOOR + 0.2 && !this.platingStarted) || this.elapsedTime < this.steamBurstUntil ? 1 : 0;
       this.saucierSteam.update(dt);
     }
     if (this.skilletSteam) {
@@ -1202,7 +1255,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
     // Optical plating reticle convergence pulse — soft green throb when plating complete
     if (this.reticleRootObj && this.isPlatingConverged) {
-      const convergePulse = 1.0 + 0.08 * Math.sin(this.elapsedTime * 4.2);
+      const convergePulse = (1.0 + 0.08 * Math.sin(this.elapsedTime * 4.2)) * this.reticleFit;
       this.reticleRootObj.getTransform().setLocalScale(new vec3(convergePulse, 1.0, convergePulse));
     }
   }
@@ -1258,7 +1311,7 @@ export class StationPropsBuilder extends BaseScriptComponent {
       this.isPlatingConverged = false;
       if (this.reticleRootObj) this.reticleRootObj.enabled = false;
       if (this.reticleRootObj) {
-        this.reticleRootObj.getTransform().setLocalScale(new vec3(1, 1, 1));
+        this.reticleRootObj.getTransform().setLocalScale(new vec3(this.reticleFit, 1, this.reticleFit));
       }
     });
   }
@@ -1533,6 +1586,9 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
       // ── Surface AR laser cutting guide grid (flush projected onto board face) ──
       const gridObj = this.ensureChild(boardObj, "CuttingGridLaser");
+      this.cutGridObj = gridObj;
+      this.cutGridPos0 = gridObj.getTransform().getLocalPosition();
+      this.cutGridRot0 = gridObj.getTransform().getLocalRotation();
       const gridRmv = this.ensureRmv(gridObj, MAT_GUIDE_LINE);
       const gb = createBuilder();
       const gidx: number[] = [];
@@ -2399,15 +2455,40 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
   /** Plate mesh object (PorcelainCoupePlate, under PlatingServingStation; plate floor at local y 0.30). */
   public getPlateObject(): SceneObject | null {
+    if (this.servePiece && !isNull(this.servePiece)) return this.servePiece; // A4a: deep bowl / serving handi
     return this.plateObj ? this.plateObj : null;
   }
 
   public getPlateFloorLocalY(): number {
-    return 0.3;
+    return this.servePiece ? this.serveFloorY : 0.3;
   }
 
   public getPlateRimRadius(): number {
-    return 5.95 * PLATE_SCALE;
+    return this.servePiece ? this.serveRimR : 5.95 * PLATE_SCALE;
+  }
+
+  /** The coupe plate itself (PorcelainCoupePlate), whatever service piece is active. */
+  public getCoupePlate(): SceneObject | null {
+    return this.plateObj ? this.plateObj : null;
+  }
+
+  /** A4a: make a service piece (sibling of the coupe, same frame) the plate; null restores the coupe + reticle exactly. */
+  public setServicePiece(obj: SceneObject | null, floorY: number, rimR: number, fit: number): void {
+    this.servePiece = obj;
+    this.serveFloorY = floorY;
+    this.serveRimR = rimR;
+    this.reticleFit = obj ? fit : 1;
+    if (this.reticleRootObj) {
+      const tr = this.reticleRootObj.getTransform();
+      tr.setLocalPosition(new vec3(0, obj ? floorY + 0.04 : 0.34, 0));
+      tr.setLocalScale(new vec3(this.reticleFit, 1, this.reticleFit));
+    }
+  }
+
+  /** A4a: inner wall [y, r] the saucier fill discs follow (handi volume); null = the saucier's own wall. */
+  public setPotInnerProfile(profile: [number, number][] | null): void {
+    potInner = profile && profile.length > 1 ? profile : POT_INNER;
+    this.applySauceVisual();
   }
 
   /**
@@ -2514,6 +2595,66 @@ export class StationPropsBuilder extends BaseScriptComponent {
   }
 
   /** WS9-P3: saucier pot object (SaucepotPot) for the plating sauce tilt. */
+  // ───────────── v5 dish morph API (used by StationPropsDishBuilder) ─────────────
+
+  /** Rebuild the 9-line laser grid at spacingCm (0.4..2.0) rotated angleDeg about its centre. 1.5 / 0 = the original grid. */
+  public rebuildCutGrid(spacingCm: number, angleDeg: number): void {
+    const s = Math.max(0.4, Math.min(2.0, isFinite(spacingCm) ? spacingCm : 1.5));
+    const a = isFinite(angleDeg) ? angleDeg : 0;
+    this.cutSpacingCm = s;
+    this.cutAngleDeg = a;
+    const g = this.cutGridObj;
+    if (!g) return;
+    const rmv = g.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    if (!rmv) return;
+    const gb = createBuilder();
+    const gidx: number[] = [];
+    let gvi = 0;
+    // K1a: the 9 lane lines stay on the knife's stops (lane pitch LANE_PITCH, one per cut) so every lane is reached
+    // at any spacing; a finer spacing adds short guide ticks inside each lane (1.5 = the original grid exactly).
+    for (let i = 0; i <= 8; i++) {
+      gvi = addBox(gb, gidx, KNIFE_REST_X + i * LANE_PITCH, 0.912, 1.2, 0.032, 0.006, 3.4, [1, 1, 1, 1], gvi);
+    }
+    if (s < LANE_PITCH - 0.05) {
+      for (let i = 0; i < 8; i++) {
+        for (let k = 1; k * s < LANE_PITCH - 0.05; k++) {
+          gvi = addBox(gb, gidx, KNIFE_REST_X + i * LANE_PITCH + k * s, 0.911, 1.2, 0.018, 0.005, 2.2, [1, 1, 1, 1], gvi);
+        }
+      }
+    }
+    const cx = KNIFE_REST_X + 4 * LANE_PITCH;
+    const half = 4 * LANE_PITCH + 0.1;
+    gvi = addBox(gb, gidx, cx, 0.910, 4.6, half, 0.005, 0.022, [1, 1, 1, 1], gvi);
+    gvi = addBox(gb, gidx, cx, 0.910, -2.2, half, 0.005, 0.022, [1, 1, 1, 1], gvi);
+    gb.appendIndices(gidx);
+    rmv.mesh = gb.getMesh();
+    gb.updateMesh();
+    const tr = g.getTransform();
+    if (Math.abs(a) < 0.01) {
+      tr.setLocalRotation(this.cutGridRot0);
+      tr.setLocalPosition(this.cutGridPos0);
+    } else {
+      // rotate about the grid centre (board-local y axis) so the bias lines stay over the lane
+      const r = quat.angleAxis(a * (Math.PI / 180), vec3.up());
+      const c = new vec3(cx, 0, 1.2);
+      tr.setLocalRotation(r.multiply(this.cutGridRot0));
+      tr.setLocalPosition(this.cutGridPos0.add(c.sub(r.multiplyVec3(c))));
+    }
+  }
+
+  public getCutSpacingCm(): number {
+    return this.cutSpacingCm;
+  }
+
+  public getCutAngleDeg(): number {
+    return this.cutAngleDeg;
+  }
+
+  /** KINE_LADLE_ORBITAL_STIR: force the saucier steam plume on for a moment. */
+  public pulseSaucierSteam(seconds: number): void {
+    this.steamBurstUntil = this.elapsedTime + Math.max(0, seconds);
+  }
+
   public getSaucierPot(): SceneObject | null {
     return this.potObj ? this.potObj : null;
   }
@@ -2863,139 +3004,72 @@ export class StationPropsBuilder extends BaseScriptComponent {
     return new vec3(BOWL_LOCAL.x + s[0], BOWL_FLOOR_Y + lift, BOWL_LOCAL.z + s[1]);
   }
 
-  /** Builds the five veg, each with WHOLE / PARTIAL / DICED stage children (one mesh each). */
+  /**
+   * Builds the five veg of the boot dish (Prebuilt Cookings #1) from VegGenerators, each with WHOLE / PARTIAL / DICED
+   * stage children (+ _Stem accent child where the veg has one). The boot meshes are kept so dish 01 restores 1:1.
+   */
   private buildVegRow(boardObj: SceneObject): void {
     const rowRoot = this.ensureChild(boardObj, "PrepVegRow");
     const mats = [MAT_RED_ONION, MAT_GARLIC, MAT_PARSLEY, MAT_RED_PEPPER, MAT_YELLOW_PEPPER];
     const labels = ["Whole", "Partial", "Diced"];
+    const slots = getPreset(0).prepSlots;
     this.vegItems = [];
+    this.vegOriginal = [];
     for (let i = 0; i < VEG_NAMES.length; i++) {
       const root = this.ensureChild(rowRoot, `Veg_${VEG_NAMES[i]}`);
       const home = new vec3(VEG_X[i], VEG_TOP_Y, VEG_Z);
       root.getTransform().setLocalPosition(home);
       const stages: SceneObject[] = [];
-      const accs: MeshAcc[] = [new MeshAcc(), new MeshAcc(), new MeshAcc()];
-      const extras: (MeshAcc | null)[] = [null, null, null]; // green calyx / stems
-      this.buildVegGeometry(i, accs, extras);
+      const set = buildVegStages(slots[i], () => new MeshAcc());
+      const orig: VegLaneMeshes = { meshes: [], mats: [mats[i], MAT_PARSLEY, mats[i]] };
       for (let k = 0; k < 3; k++) {
         const st = this.ensureChild(root, `Veg_${VEG_NAMES[i]}_${labels[k]}`);
         const rmv = this.ensureRmv(st, mats[i]);
-        accs[k].apply(rmv);
-        const ex = extras[k];
-        if (ex) ex.apply(this.ensureRmv(this.ensureChild(st, `Veg_${VEG_NAMES[i]}_${labels[k]}_Stem`), MAT_PARSLEY));
+        const p = set.parts[k];
+        const body = p[0] ? p[0].toMesh() : null;
+        if (body) rmv.mesh = body;
+        let stem: RenderMesh | null = null;
+        if (p[1]) {
+          stem = p[1].toMesh();
+          this.ensureRmv(this.ensureChild(st, `Veg_${VEG_NAMES[i]}_${labels[k]}_Stem`), MAT_PARSLEY).mesh = stem;
+        }
+        orig.meshes.push([body, stem, null]);
         stages.push(st);
       }
+      this.vegOriginal.push(orig);
       const item: VegItem = { root, stages, stage: 0, home };
       this.showStage(item, 0, false);
       this.vegItems.push(item);
     }
   }
 
-  private buildVegGeometry(i: number, a: MeshAcc[], ex: (MeshAcc | null)[]): void {
-    const H = Math.PI / 2;
-    switch (i) {
-      case 0: {
-        // Red onion: whole bulb -> halved (knife on line 1) with slices falling left -> dice
-        a[0].lathe(ONION_PROFILE, 22);
-        a[1].setXform(0.1, 0, 0);
-        a[1].lathe(ONION_PROFILE, 12, 0, 0, -H, H);
-        a[1].cutFace(ONION_PROFILE, -1);
-        const slices: [number, number, number][] = [[-0.3, 0.97, 0.12], [-0.66, 0.86, 0.38], [-1.05, 0.66, 0.75]];
-        for (const [x, k, roll] of slices) {
-          a[1].setXform(x, 0, 0, 0, 0, roll);
-          a[1].crossSlab(ONION_PROFILE, k, 0.24);
+
+  /**
+   * v5 A1: swap lane i (0..4) to another veg's stage meshes; null restores the boot (dish 01) meshes. Lane roots and
+   * stage objects keep their names, stage state and pop/scatter animation, so chopping works for any loaded veg.
+   */
+  public setVegLaneMeshes(i: number, lane: VegLaneMeshes | null): void {
+    const v = this.vegItems[i];
+    const src = lane ? lane : this.vegOriginal[i];
+    if (!v || !src) return;
+    const suffix = ["", "_Stem", "_Detail"];
+    for (let k = 0; k < v.stages.length && k < src.meshes.length; k++) {
+      const st = v.stages[k];
+      const row = src.meshes[k];
+      const rmv = this.ensureRmv(st, src.mats[0]);
+      rmv.enabled = !!row[0];
+      if (row[0]) rmv.mesh = row[0];
+      for (let p = 1; p < 3; p++) {
+        const name = st.name + suffix[p];
+        let ch: SceneObject | null = null;
+        for (let c = 0; c < st.getChildrenCount(); c++) if (st.getChild(c).name === name) ch = st.getChild(c);
+        if (!row[p]) {
+          if (ch) ch.enabled = false;
+          continue;
         }
-        a[1].clearXform();
-        dicePile(a[2], 4101, 1.12, 1.5, 0.19, 42, false);
-        break;
-      }
-      case 1: {
-        // Garlic bulb (lobed cloves) -> loose cloves -> fine mince
-        a[0].lathe(GARLIC_PROFILE, 32, 8, 0.07);
-        const cloves: [number, number, number][] = [[-0.3, -0.42, 0.3], [0.28, -0.2, -0.5], [-0.22, 0.38, 1.2], [0.3, 0.5, 0.2]];
-        for (const [x, z, yaw] of cloves) a[1].ellipsoid(x, 0.16, z, 0.17, 0.17, 0.33, 10, 6, yaw);
-        dicePile(a[2], 4202, 0.58, 1.3, 0.115, 36, false);
-        break;
-      }
-      case 2: {
-        // Parsley bunch lying along z (stems to the front) -> left half chopped -> flakes
-        const rnd = makeRng(4303);
-        const leaves: [number, number, number][] = [];
-        for (let k = 0; k < 10; k++) leaves.push([-1.2 + 2.4 * ((k + rnd() * 0.6) / 10), 0.24 + rnd() * 0.18, -1.8 + rnd() * 2.2]);
-        const stems = new MeshAcc();
-        const stemsPartial = new MeshAcc();
-        const sr = [0.05, 0.05, 0.045];
-        for (let k = 0; k < 6; k++) {
-          const x = -0.9 + (1.8 * k) / 5;
-          stems.sweep([[0.1, 0.07, 2.3], [0.05 + x * 0.3, 0.08, 1.4], [x, 0.12, 0.3]], sr, sr, 5, true);
-          if (x > 0.1) stemsPartial.sweep([[0.6, 0.07, 2.3], [0.5 + x * 0.2, 0.08, 1.4], [x, 0.12, 0.3]], sr, sr, 5, true);
-        }
-        for (const l of leaves) {
-          a[0].ellipsoid(l[0], l[1], l[2], 0.46, 0.17, 0.46, 14, 5, l[0] * 3, 0, 6, 0.18);
-          if (l[0] > 0.1) a[1].ellipsoid(l[0], l[1], l[2], 0.46, 0.17, 0.46, 14, 5, l[0] * 3, 0, 6, 0.18);
-        }
-        a[1].setXform(-0.85, 0, -0.2);
-        dicePile(a[1], 4304, 0.55, 1.3, 0.13, 40, true);
-        a[1].clearXform();
-        ex[0] = stems;
-        ex[1] = stemsPartial;
-        dicePile(a[2], 4305, 1.3, 1.6, 0.13, 78, true);
-        break;
-      }
-      case 3: {
-        // Tomato with calyx -> halved (knife on line 6) + two slices -> dice
-        a[0].lathe(TOMATO_PROFILE, 30, 5, 0.035);
-        const calyx = new MeshAcc();
-        for (let k = 0; k < 5; k++) {
-          const ang = (k * 72 * Math.PI) / 180;
-          calyx.box(0.26 * Math.cos(ang), 1.37, -0.26 * Math.sin(ang), 0.3, 0.025, 0.07, ang, -0.12);
-        }
-        const cr = [0.06, 0.055, 0.05];
-        calyx.sweep([[0, 1.3, 0], [0.02, 1.45, 0.01], [0.06, 1.6, 0.03]], cr, cr, 6, true);
-        ex[0] = calyx;
-        a[1].setXform(0.1, 0, 0);
-        a[1].lathe(TOMATO_PROFILE, 15, 5, 0.035, -H, H);
-        a[1].cutFace(TOMATO_PROFILE, -1);
-        const slices: [number, number, number][] = [[-0.35, 0.95, 0.28], [-0.88, 0.7, 0.85]];
-        for (const [x, k, roll] of slices) {
-          a[1].setXform(x, 0, 0, 0, 0, roll);
-          a[1].crossSlab(TOMATO_PROFILE, k, 0.3);
-        }
-        a[1].clearXform();
-        dicePile(a[2], 4406, 1.25, 1.5, 0.23, 38, false);
-        break;
-      }
-      case 4: {
-        // Yellow chilli lying along z with a green stem -> tip + rings -> rings and bits
-        const body = (acc: MeshAcc, t1: number): void => {
-          const c: [number, number, number][] = [];
-          const r: number[] = [];
-          const N = 14;
-          for (let k = 0; k <= N; k++) {
-            const t = (k / N) * t1;
-            const rr = t < 0.85 ? 0.04 + 0.32 * Math.pow(Math.min(1, t / 0.7), 0.6) : 0.36 - 0.08 * ((t - 0.85) / 0.15);
-            c.push([0.18 * Math.sin(Math.PI * t) - 0.05, rr * 0.95, -1.7 + 3.5 * t]);
-            r.push(rr);
-          }
-          acc.sweep(c, r, r.map((x) => x * 0.9), 12, true);
-        };
-        body(a[0], 1);
-        const stem = new MeshAcc();
-        stem.ellipsoid(-0.05, 0.28, 1.8, 0.3, 0.26, 0.12, 10, 5);
-        const str = [0.07, 0.065, 0.055, 0.05];
-        stem.sweep([[-0.05, 0.3, 1.8], [-0.05, 0.4, 2.05], [0.05, 0.5, 2.3], [0.15, 0.55, 2.45]], str, str, 6, true);
-        ex[0] = stem;
-        body(a[1], 0.62);
-        for (let k = 0; k < 4; k++) {
-          a[1].torus(0.05 - k * 0.12, 0.3, 0.75 + k * 0.32, [1, 0, 0], [0, 1, 0], [0, 0, 1], 0.24, 0.08, 0.09, 12, 5);
-        }
-        const rnd = makeRng(4507);
-        for (let k = 0; k < 11; k++) {
-          const R = 0.18 + rnd() * 0.08;
-          a[2].torus((rnd() - 0.5) * 1.0, 0.07, -1.5 + 3.2 * (k / 10) + (rnd() - 0.5) * 0.2, [1, 0, 0], [0, 0, 1], [0, 1, 0], R, 0.06, 0.06, 10, 4);
-        }
-        dicePile(a[2], 4508, 0.5, 1.5, 0.11, 12, false);
-        break;
+        if (!ch) ch = this.ensureChild(st, name);
+        ch.enabled = true;
+        this.ensureRmv(ch, src.mats[p]).mesh = row[p] as RenderMesh;
       }
     }
   }
@@ -3020,5 +3094,488 @@ export class StationPropsBuilder extends BaseScriptComponent {
       rmv.mainMaterial = mat;
     }
     return rmv;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v5 StationPropsDishBuilder: the real IDishAssetBuilder for the CURRENT meshes.
+// Does only what existing props allow: cut grid spacing/angle (+ knife step via MetricPrepBlueprint),
+// sauce colours (bowl portion, saucier discs, plate pool/streak share MAT_SAUCE / MAT_SAUCE_TOMATO) and
+// protein top/crust tints on the salmon materials. A1: veg lanes swap to VegGenerators meshes. Other mesh swaps
+// (wok/handi, ladle, cubed protein) belong to the asset phase and only log once. Preset 0 restores the captured originals.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CapturedColor {
+  mat: Material;
+  color: vec4;
+}
+
+function sameRgb(a: Rgb | undefined, b: Rgb | undefined): boolean {
+  if (!a || !b) return false;
+  return Math.abs(a[0] - b[0]) < 0.002 && Math.abs(a[1] - b[1]) < 0.002 && Math.abs(a[2] - b[2]) < 0.002;
+}
+
+/** Hue-preserving tint for textured materials: scale so the brightest channel is 1. */
+function tintOf(c: Rgb): vec4 {
+  const m = Math.max(0.05, c[0], c[1], c[2]);
+  return new vec4(c[0] / m, c[1] / m, c[2] / m, 1);
+}
+
+export class StationPropsDishBuilder implements IDishAssetBuilder {
+  private props: StationPropsBuilder;
+  private pendingLogged: boolean = false;
+  private captured: CapturedColor[] = [];
+  private def = getPreset(0);
+  private vegCache: { [key: string]: VegLaneMeshes } = {};
+
+  // A4a hero vessels / tools / service ware (VesselGenerators)
+  private hw: HeroWareController;
+  private tw: ToolWareController; // A4b stockpot basket / knives / ramekins / hand tools / whisk
+  private pantry: PantryController; // A5 spices / dairy / oils / legumes (#160-#166)
+  private warePlan: WarePlan | null = null;
+  private wareClearOnReveal: boolean = false;
+  private spatulaHidden: boolean = false;
+
+  constructor(props: StationPropsBuilder) {
+    this.props = props;
+    this.hw = new HeroWareController(props);
+    this.tw = new ToolWareController(props, this.hw);
+    this.pantry = new PantryController(props, this.tw);
+    this.pantry.setStarchProvider(() => this.starchCurrent.map((p) => p.getObject()));
+    this.hw.onPanChanged = () => {
+      // proteins follow the active pan (placeInPan: WokPan first, else SkilletPan)
+      for (const p of [this.proteinCurrent, this.proteinPending]) if (p && p.isLive()) p.placeInPan();
+    };
+  }
+
+  /** A4a controller (wok / handi + HandiLid / ladle / service ware). */
+  getHeroWare(): HeroWareController {
+    return this.hw;
+  }
+
+  /** A4b controller (strainer basket, knife variants, spice ramekins, wok chuan / chopsticks / tongs, whisk). */
+  getToolWare(): ToolWareController {
+    return this.tw;
+  }
+
+  /** A5 controller (garam masala, powders, butter, cheese, cream swirl, oil cruet, dal / chickpeas). */
+  getPantry(): PantryController {
+    return this.pantry;
+  }
+
+  /** A5: immediate pantry build for a non-staged apply; null (Reset) removes every pantry prop and restores the #326 powders. */
+  rebuildPantry(entries: PrepSlotEntry[] | null, ctx?: PantryContext): void {
+    this.pantry.rebuild(entries, ctx);
+  }
+
+  private pending(what: string): void {
+    if (this.pendingLogged) return;
+    this.pendingLogged = true;
+    print(`[DishAssetBuilder] asset phase pending: ${what} (and other mesh swaps) keep the current meshes`);
+  }
+
+  private capture(m: Material): void {
+    for (const c of this.captured) if (c.mat === m) return;
+    this.captured.push({ mat: m, color: m.mainPass.baseColor });
+  }
+
+  private restore(m: Material): void {
+    for (const c of this.captured) {
+      if (c.mat === m) {
+        m.mainPass.baseColor = c.color;
+        return;
+      }
+    }
+  }
+
+  private setColor(m: Material | null, isDefault: boolean, color: vec4): void {
+    if (!m) return;
+    if (isDefault) {
+      this.restore(m);
+      return;
+    }
+    this.capture(m);
+    m.mainPass.baseColor = color;
+  }
+
+  private matOf(name: string): Material | null {
+    const o = findByName(this.props.getSceneObject(), name);
+    const rmv = o ? (o.getComponent("Component.RenderMeshVisual") as RenderMeshVisual) : null;
+    return rmv && rmv.mainMaterial ? rmv.mainMaterial : null;
+  }
+
+  /** Lane i would show exactly the boot dish's veg (same number, colour and generator): restore the original meshes. */
+  private isBootVeg(i: number, e: PrepSlotEntry): boolean {
+    const d = this.def.prepSlots[i];
+    return !!d && e.accessNumber === d.accessNumber && sameRgb(e.colorRgb, d.colorRgb) && resolveVeg(e).gen === resolveVeg(d).gen;
+  }
+
+  /** Builds (or returns cached) one veg's three stage meshes + materials (A1 VegGenerators). Changes nothing visible. */
+  private prebuildVeg(e: PrepSlotEntry): VegLaneMeshes {
+    const f = (c: Rgb | undefined) => (c ? c.map((x) => x.toFixed(3)).join(",") : "-");
+    const key = `${e.accessNumber}|${String(e.name || "").toLowerCase()}|${f(e.colorRgb)}|${f(e.stemColorRgb)}|${e.scaleMultiplier}`;
+    const hit = this.vegCache[key];
+    if (hit) return hit;
+    const set = buildVegStages(e, () => new MeshAcc());
+    const mat = (c: Rgb, metal: number, rough: number) => makePbrMaterial(c[0], c[1], c[2], metal, rough);
+    const lane: VegLaneMeshes = {
+      meshes: set.parts.map((row) => row.map((p) => (p ? p.toMesh() : null))),
+      mats: [mat(set.bodyRgb, set.metal, set.rough), mat(set.accentRgb, 0.0, 0.45), mat(set.detailRgb, 0.0, 0.4)],
+    };
+    this.vegCache[key] = lane;
+    print(`[VegGen] #${e.accessNumber} ${e.name} -> ${set.gen} tris ${set.tris.join("/")}`);
+    return lane;
+  }
+
+  rebuildVegSlot(i: number, entry: PrepSlotEntry): void {
+    if (!entry || i < 0 || i >= VEG_NAMES.length) return;
+    if (this.isBootVeg(i, entry)) {
+      this.props.setVegLaneMeshes(i, null); // dish 01 lane: the original meshes, 1:1
+      return;
+    }
+    this.props.setVegLaneMeshes(i, this.prebuildVeg(entry));
+  }
+
+  rebuildProtein(protein: ProteinSpec): void {
+    if (!protein) return;
+    const isDefault = protein.accessNumber === this.def.protein.accessNumber;
+    if (isDefault) {
+      // dish 01 / Reset: every protein prop leaves, the salmon fillet is back exactly as built
+      this.dropProteins();
+    } else {
+      // A3: the dish's own dual-surface protein in the pan (staged one adopted, else built now); salmon hidden
+      const prop = this.takeProtein(protein);
+      if (prop) {
+        this.showProtein(prop);
+        this.setColor(this.matOf("SalmonFillet"), true, tintOf(protein.rawTopRgb));
+        this.setColor(this.matOf("SalmonCrispySkin"), true, tintOf(protein.searedCrustRgb));
+        return;
+      }
+      this.dropProteins(); // no generator: legacy stand-in (tinted fillet)
+    }
+    if (!isDefault && protein.archetype !== "FILLET_SLAB") this.pending(`protein archetype ${protein.archetype}`);
+    // raw top = SalmonFillet surface, seared crust = SalmonCrispySkin (rolled up by the flip / toss)
+    this.setColor(this.matOf("SalmonFillet"), isDefault, tintOf(protein.rawTopRgb));
+    this.setColor(this.matOf("SalmonCrispySkin"), isDefault, tintOf(protein.searedCrustRgb));
+  }
+
+  morphVessel(slot: VesselSlotId, accessNumber: number): void {
+    // A4a: #302 wok/kadai <-> #301 skillet on the primary burner, #303 handi <-> #304/#311 saucier on the secondary
+    if (slot === "SLOT_PRIMARY_BURNER") this.hw.showPrimary(accessNumber);
+    else this.hw.showSecondary(accessNumber);
+    if ([301, 302, 303, 304, 305, 307, 311].indexOf(accessNumber) < 0) this.pending(`vessel #${accessNumber} on ${slot}`);
+  }
+
+  enableTool(accessNumber: number, enabled: boolean): void {
+    if (this.tw.handles(accessNumber)) {
+      // A4b: #306 basket, #321/#322/#323 knife blade, #326 ramekins, #333-#336 hand tools / whisk
+      this.tw.show(accessNumber, enabled);
+      if (accessNumber === 306 && enabled) this.tw.holdStarches(this.starchCurrent.filter((p) => [117, 118].indexOf(p.getAccessNumber()) >= 0).map((p) => p.getObject()));
+    } else if (accessNumber === 332) {
+      this.hw.showLadle(enabled);
+    } else if (accessNumber === 331) {
+      // spatula: only ever hidden by an explicit disable; re-shown only if this builder hid it
+      const sp = findByName(this.props.getSceneObject(), "SpatulaProp");
+      if (sp && !enabled && sp.enabled) {
+        sp.enabled = false;
+        this.spatulaHidden = true;
+      } else if (sp && enabled && this.spatulaHidden) {
+        sp.enabled = true;
+        this.spatulaHidden = false;
+      }
+    } else if ((accessNumber === 341 || accessNumber === 342 || accessNumber === 343) && enabled) {
+      this.hw.showServe(accessNumber);
+    }
+  }
+
+  /** A4a staging: the dish's hero props are built HIDDEN and become the targets of their items. */
+  private stageWare(bp: UniversalDishBlueprint, items: StagedDishItem[]): void {
+    const plan = warePlanFor(bp);
+    this.warePlan = plan;
+    this.wareClearOnReveal = true;
+    this.hw.setKadai(plan.kadai);
+    this.tw.setDishList(bp);
+    for (const it of items) {
+      const k = it.key;
+      if (k === "vessel_305" || k === "vessel_307") {
+        const o = this.hw.prepare(it.accessNumber);
+        it.targets = o ? [o] : [];
+        continue;
+      }
+      if (k === "vessel_326" || k === "tool_306" || (k.indexOf("tool_33") === 0 && it.accessNumber >= 333 && it.accessNumber <= 336)) {
+        const o = this.tw.prepare(it.accessNumber);
+        it.targets = o ? [o] : [];
+        continue;
+      }
+      const hero = k === "vessel_302" || k === "vessel_303" || k === "serve_342" || k === "serve_343" || (k === "tool_332" && plan.ladle);
+      if (!hero) continue;
+      const o = this.hw.prepare(it.accessNumber);
+      it.targets = o ? [o] : [];
+    }
+  }
+
+  /** A4a reveal: the swap already ran (morphVessel / enableTool); returns the hero prop to pop in, null = not a ware key. */
+  private revealWare(itemKey: string): SceneObject[] | null {
+    if (this.wareClearOnReveal) {
+      this.wareClearOnReveal = false;
+      if (this.warePlan) this.hw.applyLeftovers(this.warePlan);
+      this.tw.applyLeftovers();
+    }
+    const root = this.props.getSceneObject();
+    if (itemKey === "vessel_302") return this.hw.getPrimary() === 302 ? this.found(root, "WokPan") : [];
+    if (itemKey === "vessel_303") return this.hw.getSecondary() === 303 ? this.found(root, "BiryaniHandi") : [];
+    if (itemKey === "tool_332") return this.hw.isLadleOn() ? this.found(root, "LadleProp") : [];
+    if (itemKey === "vessel_305") return this.hw.getSecondary() === 305 ? this.found(root, "PastaStockpot") : [];
+    if (itemKey === "vessel_307") return this.hw.getPrimary() === 307 ? this.found(root, "TawaPan") : [];
+    if (itemKey === "tool_306" || itemKey === "vessel_326" || (itemKey.indexOf("tool_33") === 0 && itemKey.length === 8)) return this.tw.revealObjects(parseInt(itemKey.substring(itemKey.indexOf("_") + 1), 10));
+    if (itemKey === "serve_341" || itemKey === "serve_342" || itemKey === "serve_343") {
+      const o = this.props.getPlateObject();
+      return o ? [o] : [];
+    }
+    return null;
+  }
+
+  private found(root: SceneObject, name: string): SceneObject[] {
+    const o = findByName(root, name);
+    return o ? [o] : [];
+  }
+
+  setCutGrid(spacingCm: number, angleDeg: number): void {
+    this.props.rebuildCutGrid(spacingCm, angleDeg);
+    const s = this.props.getCutSpacingCm();
+    // knife step = MetricPrepBlueprint.spacingCm (duck-typed: MetricPrepBlueprint imports this module)
+    const comps = this.props.getSceneObject().getComponents("Component.ScriptComponent") as any[];
+    for (const c of comps) {
+      if (c && typeof c.stepChop === "function" && typeof c.spacingCm === "number") c.spacingCm = s;
+    }
+  }
+
+  /**
+   * P5 staging: maps each item to the prop that represents it (veg lane roots, fillet, pan, pot, bowl, knife, spatula,
+   * plate). A1: the new dish's veg meshes are built HIDDEN here (cache only, nothing visible changes); the lane swap
+   * (rebuildVegSlot) runs at that item's reveal while its lane root is hidden, then the lane pops in.
+   */
+  stage(bp: UniversalDishBlueprint, items: StagedDishItem[]): void {
+    const root = this.props.getSceneObject();
+    const used: SceneObject[] = [];
+    for (const it of items) {
+      if (it.group !== "INGREDIENT" || it.lane < 0 || it.lane >= VEG_NAMES.length || !bp || !bp.prepSlots) continue;
+      const e = bp.prepSlots[it.lane];
+      if (!e || e.accessNumber !== it.accessNumber || this.isBootVeg(it.lane, e)) continue;
+      try {
+        this.prebuildVeg(e);
+      } catch (err) {
+        print(`[VegGen] prebuild failed for #${e.accessNumber}: ${err}`);
+      }
+    }
+    for (const it of items) {
+      let name = "";
+      if (it.group === "INGREDIENT" && it.lane >= 0 && it.lane < VEG_NAMES.length) name = `Veg_${VEG_NAMES[it.lane]}`;
+      else if (it.group === "PROTEIN") name = "SalmonFillet";
+      else if (it.group === "VESSEL" || it.group === "TOOL" || it.group === "SERVEWARE") name = it.propName;
+      const o = name ? findByName(root, name) : null;
+      if (!o || used.indexOf(o) >= 0 || !o.isEnabledInHierarchy) {
+        it.targets = [];
+        continue;
+      }
+      used.push(o);
+      it.targets = [o];
+    }
+    // A3: the dish's protein prop is built HIDDEN (disabled) in the pan; its reveal adopts it (rebuildProtein) + pops it.
+    if (this.proteinPending) this.proteinPending.destroy();
+    this.proteinPending = null;
+    this.proteinClearOnReveal = true;
+    for (const it of items) {
+      if (it.group !== "PROTEIN" || !bp || !bp.protein || bp.protein.accessNumber === this.def.protein.accessNumber) continue;
+      const p = this.makeProtein(bp.protein);
+      if (!p) continue;
+      p.getObject().enabled = false;
+      this.proteinPending = p;
+      it.targets = [p.getObject()];
+    }
+    // A2: the dish's starch props are built HIDDEN (disabled) at SLOT_STARCH; the reveal enables + pops them.
+    this.dropStarch(this.starchPending);
+    this.starchPending = [];
+    this.starchClearOnReveal = true;
+    const tint = bp && bp.sauce ? { baseRgb: bp.sauce.baseLiquidRgb, reducedRgb: bp.sauce.reducedSauceRgb } : undefined;
+    for (const it of items) {
+      if (it.group !== "STARCH") continue;
+      const p = this.makeStarch(this.starchEntry(it.accessNumber, it.label), tint);
+      if (!p) continue;
+      p.getObject().enabled = false;
+      this.starchPending.push(p);
+      it.targets = [p.getObject()];
+    }
+    this.stageWare(bp, items);
+    // A5: pantry props (#160-#166) built HIDDEN after the ware (the #326 ramekins decide how #161 integrates)
+    this.pantry.stage(bp, items);
+  }
+
+  reveal(itemKey: string): SceneObject[] {
+    if (this.proteinClearOnReveal) {
+      // first reveal of a newly staged dish with its own protein: the previous protein (prop or salmon) leaves now
+      this.proteinClearOnReveal = false;
+      if (this.proteinPending) {
+        if (this.proteinCurrent) this.proteinCurrent.destroy();
+        this.proteinCurrent = null;
+        ProteinRegistry.setActive(null);
+        this.setSalmonVisible(false);
+      }
+    }
+    if (this.starchClearOnReveal) {
+      // first reveal of a newly staged dish: the previous dish's starch leaves
+      this.starchClearOnReveal = false;
+      this.dropStarch(this.starchCurrent);
+      this.starchCurrent = [];
+    }
+    const pantry = this.pantry.reveal(itemKey);
+    if (pantry) return pantry;
+    const ware = this.revealWare(itemKey);
+    if (ware) return ware;
+    if (itemKey.indexOf("starch_") !== 0) return [];
+    for (let i = 0; i < this.starchPending.length; i++) {
+      const p = this.starchPending[i];
+      if (p.getItemKey() !== itemKey) continue;
+      this.starchPending.splice(i, 1);
+      this.starchCurrent.push(p);
+      p.setStage(0, false);
+      p.getObject().enabled = true;
+      return [p.getObject()];
+    }
+    return [];
+  }
+
+  // ── A3 protein props (ProteinGenerators) ──
+  private proteinCurrent: ProteinProp | null = null;
+  private proteinPending: ProteinProp | null = null;
+  private proteinClearOnReveal: boolean = false;
+
+  private proteinKey(p: ProteinSpec): string {
+    const f = (c: Rgb | undefined) => (c ? c.map((x) => Number(x).toFixed(3)).join(",") : "-");
+    return `${canonicalProteinNumber(p.accessNumber)}|${p.archetype}|${String(p.name || "").toLowerCase()}|${f(p.rawTopRgb)}|${f(p.searedCrustRgb)}|${p.lengthCm}x${p.widthCm}x${p.heightCm}`;
+  }
+
+  /** Builds a protein prop in the pan (raw face up, enabled). Catalogue colours = design palette, else dish tint. */
+  private makeProtein(p: ProteinSpec): ProteinProp | null {
+    const n = canonicalProteinNumber(p.accessNumber);
+    const entry = { accessNumber: n, name: p.name, archetype: p.archetype, rawTopRgb: p.rawTopRgb, searedCrustRgb: p.searedCrustRgb, lengthCm: p.lengthCm, widthCm: p.widthCm, heightCm: p.heightCm };
+    if (!proteinGenFor(entry)) return null;
+    let cat: (typeof PROTEIN_REGISTRY)[number] | null = null;
+    for (const e of PROTEIN_REGISTRY) if (e.accessNumber === n) cat = e;
+    const tint: ProteinTint | undefined = cat && sameRgb(cat.rawTopRgb, p.rawTopRgb) && sameRgb(cat.searedCrustRgb, p.searedCrustRgb)
+      ? undefined
+      : { rawRgb: p.rawTopRgb, searedRgb: p.searedCrustRgb };
+    try {
+      const prop = new ProteinProp(this.props, this.props.getSceneObject(), entry, tint, this.proteinKey(p));
+      prop.placeInPan();
+      return prop;
+    } catch (err) {
+      print(`[ProteinGen] build failed for #${n}: ${err}`);
+      return null;
+    }
+  }
+
+  /** The staged prop of this spec, else the live one (reset to raw), else a new one. */
+  private takeProtein(p: ProteinSpec): ProteinProp | null {
+    const key = this.proteinKey(p);
+    const pend = this.proteinPending;
+    if (pend && pend.isLive() && pend.getKey() === key) {
+      this.proteinPending = null;
+      return pend;
+    }
+    const cur = this.proteinCurrent;
+    if (cur && cur.isLive() && cur.getKey() === key) {
+      cur.resetToRaw();
+      return cur;
+    }
+    return this.makeProtein(p);
+  }
+
+  private showProtein(prop: ProteinProp): void {
+    if (this.proteinCurrent && this.proteinCurrent !== prop) this.proteinCurrent.destroy();
+    this.proteinCurrent = prop;
+    if (!prop.getPan()) prop.placeInPan();
+    prop.getObject().enabled = true;
+    ProteinRegistry.setActive(prop);
+    this.setSalmonVisible(false);
+  }
+
+  /** Reset / dish 01: every protein prop leaves and the salmon fillet shows again. */
+  private dropProteins(): void {
+    if (this.proteinCurrent) this.proteinCurrent.destroy();
+    if (this.proteinPending) this.proteinPending.destroy();
+    this.proteinCurrent = null;
+    this.proteinPending = null;
+    this.proteinClearOnReveal = false;
+    ProteinRegistry.setActive(null);
+    this.setSalmonVisible(true);
+  }
+
+  private setSalmonVisible(on: boolean): void {
+    const s = findByName(this.props.getSceneObject(), "SalmonFillet");
+    if (s && s.enabled !== on) s.enabled = on;
+  }
+
+  /** Live protein prop of the current dish (null = the salmon fillet). Later kinematics drive doneness on it. */
+  getProteinProp(): ProteinProp | null {
+    return this.proteinCurrent && this.proteinCurrent.isLive() ? this.proteinCurrent : null;
+  }
+
+  // ── A2 starch props (StarchGenerators) ──
+  private starchCurrent: StarchProp[] = [];
+  private starchPending: StarchProp[] = [];
+  private starchClearOnReveal: boolean = false;
+
+  private starchEntry(n: number, label: string): PrepSlotEntry {
+    const c = getCatalogEntry(n);
+    if (c) return { accessNumber: c.accessNumber, name: c.name, archetype: c.archetype, colorRgb: c.colorRgb, scaleMultiplier: c.scaleMultiplier };
+    return { accessNumber: n, name: label, archetype: "GRANULAR_MOUND", colorRgb: [NaN, NaN, NaN] as any, scaleMultiplier: 1 };
+  }
+
+  private makeStarch(e: PrepSlotEntry, tint?: StarchTint): StarchProp | null {
+    if (!starchGenFor(e)) return null;
+    try {
+      return new StarchProp(this.props, this.props.getSceneObject(), e, tint);
+    } catch (err) {
+      print(`[StarchGen] build failed for #${e.accessNumber}: ${err}`);
+      return null;
+    }
+  }
+
+  private dropStarch(list: StarchProp[]): void {
+    for (const p of list) p.destroy();
+  }
+
+  /** Live starch props of the current dish (later kinematics drive setStage / setStageProgress on these). */
+  getStarchProps(): StarchProp[] {
+    return this.starchCurrent.slice();
+  }
+
+  rebuildStarch(entry: PrepSlotEntry | null, stage: 0 | 1 | 2 = 0, tint?: StarchTint): void {
+    if (!entry) {
+      this.dropStarch(this.starchCurrent);
+      this.dropStarch(this.starchPending);
+      this.starchCurrent = [];
+      this.starchPending = [];
+      this.starchClearOnReveal = false;
+      return;
+    }
+    let p: StarchProp | null = null;
+    for (const q of this.starchCurrent) if (q.getAccessNumber() === entry.accessNumber) p = q;
+    if (!p) {
+      const e = entry.name ? entry : this.starchEntry(entry.accessNumber, "");
+      p = this.makeStarch(e, tint);
+      if (!p) return;
+      this.starchCurrent.push(p);
+    }
+    p.getObject().enabled = true;
+    p.setStage(stage, false);
+  }
+
+  setSauceColors(base: Rgb, reduced: Rgb): void {
+    const baseDefault = sameRgb(base, this.def.sauce.baseLiquidRgb);
+    const redDefault = sameRgb(reduced, this.def.sauce.reducedSauceRgb);
+    this.setColor(MAT_SAUCE, baseDefault, new vec4(base[0], base[1], base[2], 1));
+    this.setColor(MAT_SAUCE_TOMATO, redDefault, tintOf(reduced));
   }
 }

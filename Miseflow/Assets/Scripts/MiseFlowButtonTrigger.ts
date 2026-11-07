@@ -33,11 +33,34 @@ export class MiseFlowButtonTrigger extends BaseScriptComponent {
 
   private interactable?: Interactable;
 
+  // v5: actions owned by other components (briefing deck, AI Dish) register here, so this trigger
+  // never imports them (no circular imports). Keyed by actionType.
+  private static actionHandlers: { [action: string]: () => void } = {};
+
+  public static registerAction(action: string, handler: () => void): void {
+    MiseFlowButtonTrigger.actionHandlers[action] = handler;
+  }
+
+  /** v5 UIKit-owned buttons (passive triggers): action type by object name, "" for legacy buttons. */
+  private static registeredActionForName(n: string): string {
+    if (n.indexOf("CycleDish") !== -1) return "CYCLE_DISH";
+    if (n.indexOf("StepGuide") !== -1) return "STEP_GUIDE"; // K1a step card toggle
+    if (n.indexOf("BriefingPrev") !== -1) return "BRIEFING_PREV";
+    if (n.indexOf("BriefingNext") !== -1) return "BRIEFING_NEXT";
+    if (n.indexOf("BriefingSkip") !== -1) return "BRIEFING_SKIP";
+    // P5 Dish Studio: Btn_StudioSpeak -> STUDIO_SPEAK, Btn_StudioChip_3 -> STUDIO_CHIP_3, Btn_LetsCook -> LETS_COOK
+    if (n.indexOf("Btn_Studio") === 0) return "STUDIO_" + n.substring(10).toUpperCase();
+    if (n.indexOf("LetsCook") !== -1) return "LETS_COOK";
+    return "";
+  }
+
   onAwake(): void {
     this.deduceActionTypeFromName();
     // WS9-P3: Btn_AutoCook is a UIKit Director button that owns its own input; this trigger is a
     // passive LEAF/automation entry point there (no extra collider / Interactable -> no double fire).
+    // v5: same for Btn_CycleDish and the Btn_Briefing* deck buttons.
     if (this.actionType === "AUTO_COOK" || this.getSceneObject().name.indexOf("AutoCook") !== -1) return;
+    if (MiseFlowButtonTrigger.registeredActionForName(this.getSceneObject().name) !== "") return;
     this.ensureCollider();
     this.ensureInteractable();
 
@@ -55,7 +78,10 @@ export class MiseFlowButtonTrigger extends BaseScriptComponent {
     if (this.actionType && this.actionType.length > 0) return;
 
     const n = this.getSceneObject().name;
-    if (n.indexOf("AutoCook") !== -1) {
+    const registered = MiseFlowButtonTrigger.registeredActionForName(n);
+    if (registered !== "") {
+      this.actionType = registered;
+    } else if (n.indexOf("AutoCook") !== -1) {
       this.actionType = "AUTO_COOK";
     } else if (n.indexOf("StepChop") !== -1) {
       this.actionType = "STEP_CHOP";
@@ -132,6 +158,22 @@ export class MiseFlowButtonTrigger extends BaseScriptComponent {
       const auto = AutoCookController.getInstance();
       if (auto) auto.toggle();
       else print("[MiseFlowButtonTrigger] AutoCookController not found");
+      return;
+    }
+    // v5 registered actions (handlers apply their own Auto Cook guard where it matters)
+    const registered = MiseFlowButtonTrigger.registeredActionForName(this.getSceneObject().name);
+    if (registered !== "") {
+      this.actionType = registered;
+      const handler = MiseFlowButtonTrigger.actionHandlers[registered];
+      if (handler) {
+        try {
+          handler();
+        } catch (e) {
+          print(`[MiseFlowButtonTrigger] ${registered} handler error: ${e}`);
+        }
+      } else {
+        print(`[MiseFlowButtonTrigger] no handler registered for ${registered}`);
+      }
       return;
     }
     // While Auto Cook drives the kitchen, manual steps stand down (Reset still cancels it).

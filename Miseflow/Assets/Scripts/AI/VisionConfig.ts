@@ -13,6 +13,8 @@
  * (ProposalGateRejectionScenario, SpatulaFlipGuideScenario) and the recording depend on them.
  */
 
+import { getModel } from "./AiModelConfig";
+
 export type VisionScanId = "EXTEND_SEAR" | "OPTIMAL_CRUST" | "STEAM_OCCLUDED";
 export type VisionStageName = "RAW" | "GOLDEN" | "CRISP" | "UNSURE";
 export type VisionStatus = "UNDER" | "OPTIMAL" | "OVER" | "AT_RISK" | "UNSURE";
@@ -40,7 +42,7 @@ export interface CalibratedStage {
 
 export interface VisionConfigType {
   // ── live Anthropic Messages API ──
-  /** Anthropic model id. */
+  /** Anthropic model id, read from AiModelConfig ("" = not configured: live vision stays off). */
   model: string;
   /** Anthropic Messages API endpoint. */
   endpointUrl: string;
@@ -97,7 +99,7 @@ export interface VisionConfigType {
 const STATUSES: VisionStatus[] = ["UNDER", "OPTIMAL", "OVER", "AT_RISK", "UNSURE"];
 
 export const VisionConfig: VisionConfigType = {
-  model: "claude-sonnet-5-5",
+  model: getModel("vision"),
   endpointUrl: "https://api.anthropic.com/v1/messages",
   anthropicVersion: "2023-06-01",
   maxTokens: 600,

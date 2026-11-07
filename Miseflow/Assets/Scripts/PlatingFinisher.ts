@@ -1,6 +1,8 @@
 import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { MAT_SAUCE_TOMATO, MeshAcc, StationPropsBuilder, SteamPlume, makePbrMaterial } from "./StationPropsBuilder";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
+import { ProteinProp, ProteinRegistry } from "./ProteinGenerators";
+import { KineRegistry, dishBuilder, worldAabb } from "./KineRegistry";
 
 const DEG = Math.PI / 180;
 
@@ -28,6 +30,10 @@ const POT_TILT = 12 * DEG;
 const WAIT_FLIP_TIMEOUT = 7.0;
 // WS10 plated-dish steam: soft wisps off the hot fillet, fading out ~8 s after DISH_PLATED
 const DISH_STEAM_HOLD = 5.5;
+// K1b plating variants (deep bowl #342 / serving handi #343; the coupe plate #341 keeps the timeline above 1:1)
+const NEST_DUR = 1.6; // tween s: the noodle / pasta nest or rice dome arcs into the service piece first
+const LADLE_LEAD = 2.0; // real s LadleProp.ladleToPlate needs to dip, scoop and travel before it tips
+const LADLE_WAIT_CAP = 6.0; // real s DISH_PLATED waits for the ladle to return
 
 type Phase = "IDLE" | "WAIT_FLIP" | "TWEEN" | "DONE";
 
@@ -93,6 +99,11 @@ export class PlatingFinisher extends BaseScriptComponent {
   private props: StationPropsBuilder | null = null;
   private guide: SpatulaTechniqueGuide | null = null;
   private salmon: SceneObject | null = null;
+  // K1a: what actually goes on the plate (salmon for dish 01, the dish's active protein prop otherwise)
+  private mover: SceneObject | null = null;
+  private moverProp: ProteinProp | null = null;
+  private moverScale: number = SALMON_PLATE_SCALE;
+  private moverMoved: boolean = false;
   private pot: SceneObject | null = null;
   private potRot0: quat = quat.quatIdentity();
   private potAxis: vec3 = vec3.right();
@@ -116,6 +127,21 @@ export class PlatingFinisher extends BaseScriptComponent {
   private plateFloorY: number = 0;
   private plateCentre: vec3 = vec3.zero();
   private platedFlags = { salmon: false, sauce: false, garnish: false };
+  // K1b variant state (all neutral for the coupe plate / dish 01)
+  private variant: number = 341;
+  private nest: SceneObject | null = null;
+  private nestDone: boolean = false;
+  private nFrom: vec3 = vec3.zero();
+  private nTo: vec3 = vec3.zero();
+  private nRotFrom: quat = quat.quatIdentity();
+  private nScFrom: vec3 = vec3.one();
+  private nFit: number = 1;
+  private nTwist: number = 0;
+  private nestLift: number = 0;
+  private shift: number = 0;
+  private sauceDelay: number = 0;
+  private ladle: any = null; // LadleProp (serving handi pour)
+  private holdT: number = 0;
 
   onAwake(): void {
     this.createEvent("OnStartEvent").bind(() => {
@@ -138,6 +164,24 @@ export class PlatingFinisher extends BaseScriptComponent {
 
   public isDishPlated(): boolean {
     return this.phase === "DONE";
+  }
+
+  /** A4a: the active service piece (coupe plate, #342 deep bowl or #343 serving handi) plating lands in. */
+  public getPlateObject(): SceneObject | null {
+    const p = this.propsRef();
+    return p ? p.getPlateObject() : null;
+  }
+
+  /** A4a: rim radius of the active service piece (plate-local units). */
+  public getPlateRimRadius(): number {
+    const p = this.propsRef();
+    return p ? p.getPlateRimRadius() : 0;
+  }
+
+  private propsRef(): StationPropsBuilder | null {
+    if (this.props) return this.props;
+    const root = this.stationsRoot || this.findStationsRoot();
+    return root ? (root.getComponent(StationPropsBuilder.getTypeName()) as StationPropsBuilder) : null;
   }
 
   /** Start the plating tween (idempotent; normally driven by PLATING_CONVERGENCE). */
@@ -258,18 +302,93 @@ export class PlatingFinisher extends BaseScriptComponent {
     if (this.phase === "WAIT_FLIP") {
       this.waitT += dt;
       const flipping = this.guide ? this.guide.isFlipping() : false;
-      if (!flipping || this.waitT > WAIT_FLIP_TIMEOUT) this.startTween();
+      // K1b: a noodle toss / dum / whisk / pantry action still running finishes first (never for dish 01)
+      if ((!flipping && !KineRegistry.anyBusy()) || this.waitT > WAIT_FLIP_TIMEOUT) this.startTween();
       return;
     }
     this.t += dt;
-    this.step(this.t);
+    if (this.nest) this.stepNest(this.t);
+    let tt = this.t - this.shift;
+    if (this.sauceDelay > 0 && tt > T_TILT0) tt = Math.max(T_TILT0, tt - this.sauceDelay);
+    if (tt >= T_END && this.ladle && this.ladle.isBusy() && this.holdT < LADLE_WAIT_CAP) {
+      this.holdT += getDeltaTime();
+      return;
+    }
+    this.step(tt);
+  }
+
+  /** K1a: the protein that goes on the plate: the active ProteinProp of the dish, else the salmon fillet (dish 01). */
+  private pickMover(): void {
+    const prop = ProteinRegistry.getActive();
+    if (prop && prop.isLive() && prop.getObject().isEnabledInHierarchy) {
+      this.mover = prop.getObject();
+      this.moverProp = prop;
+    } else {
+      this.mover = this.salmon;
+      this.moverProp = null;
+    }
+  }
+
+  /** World AABB over every enabled RenderMeshVisual under obj (null when it has none). */
+  private subtreeAabb(obj: SceneObject): { mn: vec3; mx: vec3 } | null {
+    const box: { mn: vec3 | null; mx: vec3 | null } = { mn: null, mx: null };
+    const walk = (o: SceneObject) => {
+      if (!o.enabled) return;
+      const rmv = o.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+      if (rmv && rmv.mesh) {
+        try {
+          const a = rmv.worldAabbMin();
+          const b = rmv.worldAabbMax();
+          const m0 = box.mn;
+          const m1 = box.mx;
+          box.mn = m0 ? new vec3(Math.min(m0.x, a.x), Math.min(m0.y, a.y), Math.min(m0.z, a.z)) : a;
+          box.mx = m1 ? new vec3(Math.max(m1.x, b.x), Math.max(m1.y, b.y), Math.max(m1.z, b.z)) : b;
+        } catch (e) {
+          // skip visuals without bounds
+        }
+      }
+      const n = o.getChildrenCount();
+      for (let i = 0; i < n; i++) walk(o.getChild(i));
+    };
+    walk(obj);
+    return box.mn && box.mx ? { mn: box.mn, mx: box.mx } : null;
+  }
+
+  /** K1a: tween setup for a non-salmon protein prop onto the active service piece (fits inside its rim). */
+  private startPropTween(obj: SceneObject): void {
+    const tr = obj.getTransform();
+    this.sFrom = tr.getWorldPosition();
+    this.rFrom = tr.getWorldRotation();
+    this.scFrom = tr.getLocalScale();
+    const box = this.subtreeAabb(obj);
+    const c = box ? box.mn.add(box.mx).uniformScale(0.5) : this.sFrom.add(new vec3(0, 0.6, 0));
+    const off = c.sub(this.sFrom);
+    const halfH = box ? c.y - box.mn.y : 0.6;
+    const span = box ? Math.max(box.mx.x - box.mn.x, box.mx.z - box.mn.z) : 4;
+    const plate = this.getPlateObject();
+    const floorY = this.props ? this.props.getPlateFloorLocalY() : 0.3;
+    const centre = plate ? plate.getTransform().getWorldTransform().multiplyPoint(new vec3(0, floorY, 0)) : this.sFrom;
+    const rimW = plate ? this.getPlateRimRadius() * plate.getTransform().getWorldScale().x : 4;
+    this.moverScale = Math.max(0.35, Math.min(1, (rimW * 1.5) / Math.max(0.1, span)));
+    this.plateFloorY = plate ? centre.y : this.sFrom.y - halfH;
+    this.plateCentre = centre;
+    const yaw = quat.angleAxis(-22 * DEG, vec3.up());
+    this.rTo = yaw.multiply(this.rFrom);
+    const visualTarget = new vec3(centre.x, centre.y + halfH * this.moverScale + 0.05, centre.z);
+    this.sTo = visualTarget.sub(yaw.multiplyVec3(off.uniformScale(this.moverScale)));
+    this.moverMoved = true;
   }
 
   private startTween(): void {
     this.phase = "TWEEN";
     this.t = 0;
     this.platedFlags = { salmon: false, sauce: false, garnish: false };
-    if (this.salmon) {
+    this.pickMover();
+    this.moverScale = SALMON_PLATE_SCALE;
+    this.setupVariant();
+    if (this.mover && this.moverProp) {
+      this.startPropTween(this.mover);
+    } else if (this.salmon) {
       const tr = this.salmon.getTransform();
       this.sFrom = tr.getWorldPosition();
       this.rFrom = tr.getWorldRotation();
@@ -300,20 +419,28 @@ export class PlatingFinisher extends BaseScriptComponent {
       const visualTarget = new vec3(centre.x, centre.y + halfH * SALMON_PLATE_SCALE + 0.05, centre.z);
       this.sTo = visualTarget.sub(yaw.multiplyVec3(off.uniformScale(SALMON_PLATE_SCALE)));
     }
+    if (this.nestLift > 0) {
+      // K1b: the protein crowns the nest / dome instead of the bowl floor; sauce pools on top of it
+      const up = new vec3(0, this.nestLift, 0);
+      this.sTo = this.sTo.add(up);
+      this.plateCentre = this.plateCentre.add(up);
+      this.plateFloorY += this.nestLift;
+    }
     this.eventBus.emit("PLATING_STARTED", {});
   }
 
   private step(t: number): void {
     // 1. salmon: lift, arc across, settle on the plate
     // (the final pose is always applied once, even if a frame hitch jumps past T_SALMON1)
-    if (this.salmon && t >= T_SALMON0 && !this.platedFlags.salmon) {
+    const mv = this.mover || this.salmon;
+    if (mv && !isNull(mv) && t >= T_SALMON0 && !this.platedFlags.salmon) {
       const k = smooth((t - T_SALMON0) / (T_SALMON1 - T_SALMON0));
       if (t >= T_SALMON1) this.platedFlags.salmon = true;
-      const tr = this.salmon.getTransform();
+      const tr = mv.getTransform();
       const p = vec3.lerp(this.sFrom, this.sTo, k).add(new vec3(0, 7.0 * Math.sin(Math.PI * k), 0));
       tr.setWorldPosition(p);
       tr.setWorldRotation(quat.slerp(this.rFrom, this.rTo, k));
-      const s = 1 + (SALMON_PLATE_SCALE - 1) * k;
+      const s = 1 + (this.moverScale - 1) * k;
       tr.setLocalScale(this.scFrom.uniformScale(s));
     }
 
@@ -322,7 +449,7 @@ export class PlatingFinisher extends BaseScriptComponent {
       this.platedFlags.sauce = true;
       this.prepareSauce();
     }
-    if (this.pot && t >= T_TILT0 && t <= T_TILT1 + 0.05) {
+    if (this.pot && !this.ladle && t >= T_TILT0 && t <= T_TILT1 + 0.05) {
       const k = (t - T_TILT0) / (T_TILT1 - T_TILT0);
       const a = k < 0.3 ? smooth(k / 0.3) : k > 0.75 ? 1 - smooth((k - 0.75) / 0.25) : 1;
       this.pot.getTransform().setLocalRotation(quat.angleAxis(POT_TILT * a, this.potAxis).multiply(this.potRot0));
@@ -345,6 +472,7 @@ export class PlatingFinisher extends BaseScriptComponent {
     if (t >= T_GARNISH0 && !this.platedFlags.garnish) {
       this.platedFlags.garnish = true;
       this.prepareGarnish();
+      if (this.moverProp) KineRegistry.platingFinish(this.salmonTop, this.getPlateObject()); // K1b cream / cheese
     }
     for (const f of this.flakes) this.fly(f, t, true);
 
@@ -355,7 +483,8 @@ export class PlatingFinisher extends BaseScriptComponent {
       if (this.props) this.props.setSauceServed(1);
       this.startDishSteam();
       this.eventBus.emit("DISH_PLATED", {});
-      print("[PlatingFinisher] Dish plated: salmon crispy side up, sauce spooned, garnish on top.");
+      if (this.variant === 341 && !this.moverProp) print("[PlatingFinisher] Dish plated: salmon crispy side up, sauce spooned, garnish on top.");
+      else print(`[PlatingFinisher] Dish plated in ${this.variant === 342 ? "#342 deep bowl" : this.variant === 343 ? "#343 serving handi" : "#341 coupe plate"}: ${this.nest ? "nest/dome, " : ""}protein on top, ${this.ladle ? "ladle pour" : "sauce pour"}, garnish.`);
     }
   }
 
@@ -402,6 +531,17 @@ export class PlatingFinisher extends BaseScriptComponent {
       const dl = new vec3(dPot.x, 0, dPot.z).normalize();
       lipWorld = ptr.getWorldTransform().multiplyPoint(dl.uniformScale(5.4).add(new vec3(0, 5.2, 0)));
     }
+    if (this.ladle) {
+      // K1b serving handi: the #332 ladle scoops from the cooking handi and tips over the dish (drops follow it)
+      lipWorld = this.salmonTop.add(new vec3(0, 3.6, 0));
+      let ok = false;
+      try {
+        ok = this.ladle.ladleToPlate(this.salmonTop);
+      } catch (e) {
+        ok = false;
+      }
+      if (!ok) this.ladle = null;
+    }
     const rnd = makeRng(9101);
     for (let i = 0; i < this.drops.length; i++) {
       const d = this.drops[i];
@@ -423,7 +563,14 @@ export class PlatingFinisher extends BaseScriptComponent {
   private measureSalmon(): void {
     const top = new vec3(this.plateCentre.x, this.plateCentre.y + 1.4, this.plateCentre.z);
     let topY = top.y;
-    if (this.salmon) {
+    if (this.moverProp && this.mover && !isNull(this.mover)) {
+      // K1a: protein prop on the plate: top of its pieces, long axis along its yaw
+      const box = this.subtreeAabb(this.mover);
+      if (box) topY = box.mx.y;
+      const ax = this.mover.getTransform().getWorldRotation().multiplyVec3(vec3.right());
+      const h = new vec3(ax.x, 0, ax.z);
+      this.salmonAxis = h.length > 1e-3 ? h.normalize() : vec3.right();
+    } else if (this.salmon) {
       try {
         const rmv = this.salmon.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
         if (rmv) topY = rmv.worldAabbMax().y;
@@ -487,8 +634,95 @@ export class PlatingFinisher extends BaseScriptComponent {
 
   // ───────────────────────── reset ─────────────────────────
 
+  /** K1b: service piece variant + nest / ladle setup (coupe plate = no change at all). */
+  private setupVariant(): void {
+    this.variant = 341;
+    this.nest = null;
+    this.nestDone = false;
+    this.nestLift = 0;
+    this.shift = 0;
+    this.sauceDelay = 0;
+    this.ladle = null;
+    this.holdT = 0;
+    const b = dishBuilder();
+    const hw = b ? b.getHeroWare() : null;
+    const serve = hw ? hw.getServe() : 341;
+    const plate = this.getPlateObject();
+    if ((serve !== 342 && serve !== 343) || !plate) return;
+    this.variant = serve;
+    try {
+      this.prepareNest(b, plate);
+    } catch (e) {
+      print(`[PlatingFinisher] nest setup failed: ${e}`);
+      this.nest = null;
+      this.nestLift = 0;
+      this.shift = 0;
+    }
+    const ladle = serve === 343 && hw ? hw.getLadle() : null;
+    if (ladle && ladle.getObject().isEnabledInHierarchy && !ladle.isBusy()) {
+      this.ladle = ladle;
+      this.sauceDelay = LADLE_LEAD * Math.max(0.1, this.timeScale);
+    }
+  }
+
+  /** The dish's starch (noodle / pasta nest, rice dome) leaves the pan / handi / tray for the service piece. */
+  private prepareNest(b: any, plate: SceneObject): void {
+    const list: any[] = b && typeof b.getStarchProps === "function" ? b.getStarchProps() : [];
+    let sp: any = null;
+    for (const p of list) {
+      const o = p ? p.getObject() : null;
+      if (o && !isNull(o) && o.isEnabledInHierarchy) {
+        sp = p;
+        break;
+      }
+    }
+    if (!sp) return;
+    const n = sp.getObject() as SceneObject;
+    sp.setStageProgress(2);
+    const tray = findByName(n, "StarchTray");
+    if (tray) tray.enabled = false;
+    n.setParentPreserveWorldTransform(plate);
+    const tr = n.getTransform();
+    this.nFrom = tr.getWorldPosition();
+    this.nRotFrom = tr.getWorldRotation();
+    this.nScFrom = tr.getLocalScale();
+    const box = worldAabb(n);
+    const floorY = this.props ? this.props.getPlateFloorLocalY() : 0.3;
+    const centre = plate.getTransform().getWorldTransform().multiplyPoint(new vec3(0, floorY, 0));
+    const rimW = this.getPlateRimRadius() * plate.getTransform().getWorldScale().x;
+    const span = box ? Math.max(box.mx.x - box.mn.x, box.mx.z - box.mn.z) : rimW;
+    this.nFit = Math.max(0.3, Math.min(2.0, (rimW * (this.variant === 343 ? 1.25 : 1.35)) / Math.max(0.01, span)));
+    this.nTwist = sp.getAccessNumber() === 116 ? 0 : 2.5 * Math.PI; // noodles / pasta twirl into a nest
+    const c = box ? box.mn.add(box.mx).uniformScale(0.5) : this.nFrom;
+    const off = c.sub(this.nFrom);
+    const halfH = box ? c.y - box.mn.y : 0.5;
+    const yawQ = quat.angleAxis(this.nTwist, vec3.up());
+    const visual = new vec3(centre.x, centre.y + halfH * this.nFit + 0.03, centre.z);
+    this.nTo = visual.sub(yawQ.multiplyVec3(off.uniformScale(this.nFit)));
+    this.nestLift = (box ? box.mx.y - box.mn.y : 1) * this.nFit * 0.8;
+    this.nest = n;
+    this.shift = NEST_DUR;
+  }
+
+  private stepNest(t: number): void {
+    const n = this.nest;
+    if (!n || isNull(n) || this.nestDone) return;
+    const k = smooth(Math.min(1, t / NEST_DUR));
+    const tr = n.getTransform();
+    tr.setWorldPosition(vec3.lerp(this.nFrom, this.nTo, k).add(new vec3(0, 6.0 * Math.sin(Math.PI * k), 0)));
+    tr.setWorldRotation(quat.angleAxis(this.nTwist * k, vec3.up()).multiply(this.nRotFrom));
+    tr.setLocalScale(this.nScFrom.uniformScale(1 + (this.nFit - 1) * k));
+    if (t >= NEST_DUR) this.nestDone = true;
+  }
+
   private resetDish(): void {
     this.phase = "IDLE";
+    this.nest = null;
+    this.nestLift = 0;
+    this.shift = 0;
+    this.sauceDelay = 0;
+    this.ladle = null;
+    this.variant = 341;
     this.t = 0;
     this.waitT = 0;
     if (this.dishSteam) this.dishSteam.setNow(0);
@@ -502,6 +736,11 @@ export class PlatingFinisher extends BaseScriptComponent {
       f.dur = 0;
       f.landed = false;
     }
-    // salmon transform is restored by SpatulaTechniqueGuide.resetFlip (RESET_REQUESTED)
+    // salmon transform is restored by SpatulaTechniqueGuide.resetFlip (RESET_REQUESTED); a plated protein prop goes
+    // back into its pan (raw face up comes from the dish re-apply)
+    if (this.moverMoved && this.moverProp && this.moverProp.isLive()) this.moverProp.placeInPan(this.moverProp.getPan());
+    this.moverMoved = false;
+    this.mover = null;
+    this.moverProp = null;
   }
 }

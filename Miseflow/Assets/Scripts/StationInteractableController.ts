@@ -14,6 +14,12 @@ function findByName(parent: SceneObject, name: string): SceneObject | null {
   return null;
 }
 
+/** v5: cut-guide spacing shown on the prep label (dish 01 = "1.5"). */
+function guideCm(data: any): string {
+  const s = data && typeof data.spacingCm === "number" && isFinite(data.spacingCm) ? data.spacingCm : 1.5;
+  return `${Math.round(s * 10) / 10}`;
+}
+
 @component
 export class StationInteractableController extends BaseScriptComponent {
   @input
@@ -144,13 +150,13 @@ export class StationInteractableController extends BaseScriptComponent {
     // Slicing reference guide update
     this.eventBus.on("CUT_REFERENCE_STEP", (data: any) => {
       if (this.prepStatusLabel) {
-        this.prepStatusLabel.text = `CHOP ${data.sliceIndex}/${data.totalSlices} (1.5cm Guide)`;
+        this.prepStatusLabel.text = `CHOP ${data.sliceIndex}/${data.totalSlices} (${guideCm(data)}cm Guide)`;
       }
     });
 
     this.eventBus.on("ACOUSTIC_CHOP_DETECTED", (data: any) => {
       if (this.prepStatusLabel) {
-        this.prepStatusLabel.text = `CHOP ${data.sliceIndex}/${data.totalSlices} (1.5cm Guide)`;
+        this.prepStatusLabel.text = `CHOP ${data.sliceIndex}/${data.totalSlices} (${guideCm(data)}cm Guide)`;
       }
     });
 

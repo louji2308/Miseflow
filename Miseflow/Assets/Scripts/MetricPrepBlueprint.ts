@@ -11,6 +11,9 @@ function findByName(parent: SceneObject, name: string): SceneObject | null {
   return null;
 }
 
+/** Knife travel per cut = the board's veg lane pitch (dish 01 spacing). */
+const LANE_STEP_CM = 1.5;
+
 /**
  * MetricPrepBlueprint.ts
  * Advisory cutting reference guides and visual portion accumulation:
@@ -139,7 +142,9 @@ export class MetricPrepBlueprint extends BaseScriptComponent {
 
     const t = this.laserCurtainObject.getTransform();
     const pos = t.getLocalPosition();
-    const newX = this.initialX + (this.currentSliceIndex * this.spacingCm);
+    // K1a: the knife always steps one veg lane (1.5) per cut so 8 cuts reach every lane at any cut spacing; the
+    // dish's spacing (spacingCm, e.g. 0.8 / 0.4) is the fine guide drawn inside each lane and reported on the bus.
+    const newX = this.initialX + (this.currentSliceIndex * LANE_STEP_CM);
     t.setLocalPosition(new vec3(newX, pos.y, pos.z));
   }
 

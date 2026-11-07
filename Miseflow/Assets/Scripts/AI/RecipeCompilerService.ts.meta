@@ -1,0 +1,46 @@
+- !<AssetImportMetadata/2baddf43-ecdd-4530-81d7-6482d60113f3>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 502686ad-d435-4dad-8f44-359303cb6ae9
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 502686ad-d435-4dad-8f44-359303cb6ae9
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 25691162-38c4-4b21-8e38-ef28916ee4c2
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/25691162-38c4-4b21-8e38-ef28916ee4c2>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 6eba15ed-5f65-4b53-997d-71f841c538b7
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    useLiveAiCompiler: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - useLiveAiCompiler: true
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input bool useLiveAiCompiler = true

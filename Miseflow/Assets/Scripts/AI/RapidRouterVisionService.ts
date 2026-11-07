@@ -1,6 +1,7 @@
 import { MiseFlowEventBus } from "../MiseFlowEventBus";
 import { ChoreographyDAG } from "../ChoreographyDAG";
 import { ANTHROPIC_API_KEY } from "./LocalSecrets";
+import { getModel } from "./AiModelConfig";
 import { AIProposal, CookingStageStatus, GateEvaluation, ProposalGate } from "./ProposalGate";
 import { CalibratedStage, VisionConfig, VisionStageName } from "./VisionConfig";
 
@@ -14,7 +15,7 @@ export interface RapidRouterConfig {
 /**
  * RapidRouterVisionService.ts — Grandmaster Edition
  * Connects MiseFlow AR on Snap Spectacles to the Anthropic Messages API (optional, off by default).
- * Target Model: claude-sonnet-5-5 (effort: medium). Class name kept for compatibility.
+ * Model id comes from AiModelConfig (empty = live disabled, scripted fallback). Class name kept for compatibility.
  *
  * Implements the WIN_PLAN vision pipeline:
  * 1. Image frame / culinary stage probe -> Anthropic Messages API.
@@ -33,7 +34,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
 
   private config: RapidRouterConfig = {
     apiKey: ANTHROPIC_API_KEY, // from gitignored LocalSecrets.ts (tools/sync-env.ps1); setApiKey() overrides
-    model: VisionConfig.model,
+    model: getModel("vision"),
     endpointUrl: VisionConfig.endpointUrl,
     timeoutMs: VisionConfig.timeoutMs,
   };
@@ -103,7 +104,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
     try {
       let proposal: AIProposal;
 
-      if (this.useLiveRapidRouter && this.config.apiKey && this.internetModule) {
+      if (this.useLiveRapidRouter && this.config.apiKey && this.config.model && this.internetModule) {
         proposal = await this.callRapidRouterApi(stage, base64Frame);
       } else {
         // High-fidelity calibrated fallback matching verified stage profiles

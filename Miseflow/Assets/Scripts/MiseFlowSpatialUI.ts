@@ -15,6 +15,20 @@ import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
 import { PlatingFinisher } from "./PlatingFinisher";
 import { AutoCookController } from "./AutoCookController";
 import { MiseFlowButtonTrigger } from "./MiseFlowButtonTrigger";
+import { RecipeCompilerService } from "./AI/RecipeCompilerService";
+import { getPreset, nextPresetIndex } from "./AI/DishLibraryConfig";
+import { SpatialBriefingDeck } from "./SpatialBriefingDeck";
+import { VoiceSousChefController } from "./VoiceSousChefController";
+import { DishBlueprintApplier } from "./DishBlueprintApplier";
+import { PanTossRoll } from "./PanTossRoll";
+import { LadleOrbitalStir } from "./LadleOrbitalStir";
+import { DishStudio } from "./DishStudio";
+import { DishRevealDirector } from "./DishRevealDirector";
+import { StepEngine } from "./StepEngine";
+import { NoodleLiftToss } from "./NoodleLiftToss";
+import { RiceDumLayer } from "./RiceDumLayer";
+import { WhiskEmulsion } from "./WhiskEmulsion";
+import { PantryChoreographer } from "./PantryChoreographer";
 
 // ============================================================================
 // MiseFlow v4 "Diegetic Cockpit" — progressive-disclosure spatial UI
@@ -80,6 +94,11 @@ const PREP_PILL_ANCHOR = new vec3(12.0, 5.6, -6.5);
 const PREP_STEM_FOOT_Y = 1.6;
 const CHRONO_CENTER = new vec3(0.0, 19.0, -16.0);
 const DIRECTOR_CENTER = new vec3(0.0, -1.0, 13.4);
+// v5 ChefVoiceBannerUI: dish title + AI sous-chef cue, just below the PLATE IN capsule
+const CHEF_BANNER_CENTER = new vec3(0.0, 16.0, -15.0);
+const CHEF_BANNER_W = 14.8;
+const CHEF_BANNER_H = 2.5;
+const COACH_HOLD_SEC = 9.0;
 
 // How long transient expansions stay open before receding (seconds)
 const EXPAND_PULSE_SEC = 5.0;
@@ -216,6 +235,19 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private warpButton?: DirectorButton;
   private autoButton?: DirectorButton;
   private autoButtonContent?: ElementContent;
+  private stepButton?: DirectorButton;
+
+  // v5 ChefVoiceBannerUI
+  private bannerGlass?: GlassStyle;
+  private bannerTitle?: Text;
+  private bannerCoach?: Text;
+  private bannerDefaultCoach: string = "";
+  // v5 pill verbs from the active blueprint (dish 01: SEAR / SAUCE)
+  private skilletVerb: string = "SEAR";
+  private sauceVerb: string = "SAUCE";
+  private isDefaultDishUi: boolean = true; // K1b: dish 01 keeps its salmon wording; others derive it from the blueprint
+  private bannerCoachUntil: number = -1;
+  private pendingBannerDish: any = null;
 
   // WS9-P3 Auto Cook caption / plated dish / flip state
   private autoCaption: string = "";
@@ -305,6 +337,19 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       VisionScanStandIn.getTypeName(),
       PlatingFinisher.getTypeName(), // WS9-P3 salmon -> plate, sauce, garnish
       AutoCookController.getTypeName(), // WS9-P3 Auto Cook director mode
+      RecipeCompilerService.getTypeName(), // v5 dish compiler (preset 0 salmon at boot / Reset)
+      DishStudio.getTypeName(), // v5 P5 full-view Dish Studio (closed at boot / Reset; hides the setup without resetting it)
+      SpatialBriefingDeck.getTypeName(), // v5 P5 one-card-at-a-time briefing deck inside the studio (closed at boot)
+      DishRevealDirector.getTypeName(), // v5 P5 staged one-by-one reveal + loading panel after Let's cook
+      VoiceSousChefController.getTypeName(), // v5 "Chef, prepare X" (idle in preview)
+      DishBlueprintApplier.getTypeName(), // v5 P4: blueprint -> DAG timing/titles + kinematics config
+      PanTossRoll.getTypeName(), // v5 P4: KINE_PAN_TOSS_ROLL (flip override for toss dishes)
+      LadleOrbitalStir.getTypeName(), // v5 P4: KINE_LADLE_ORBITAL_STIR (drives the A4a LadleProp #332)
+      StepEngine.getTypeName(), // v5 K1a: per-dish steps[] engine (STEP_STARTED / STEP_COMPLETED) + step card + doneness
+      NoodleLiftToss.getTypeName(), // v5 K1b: KINE_NOODLE_LIFT_TOSS (basket lift -> pan -> chopsticks / tongs helix)
+      RiceDumLayer.getTypeName(), // v5 K1b: KINE_RICE_DUM_LAYER (rice layers in the handi, lid seal + dum, steam lift)
+      WhiskEmulsion.getTypeName(), // v5 K1b: KINE_WHISK_EMULSION wiring (whisk + sauce gloss)
+      PantryChoreographer.getTypeName(), // v5 K1b: per-step pantry actions (butter, spices, powders, drizzle, cream)
     ]) {
       if (!layer.getComponent(typeName)) layer.createComponent(typeName);
     }
@@ -380,6 +425,35 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     return false;
   }
 
+  /** v5 P5 AI Dish (Btn_CycleDish): open the full-view Dish Studio home (Speak / Keyboard). */
+  private openDishStudio(): void {
+    const studio = DishStudio.getInstance();
+    if (studio) studio.openHome();
+  }
+
+  /** Key 8 shortcut: next prebuilt dish through the studio card flow (falls back to a direct compile request). */
+  private cycleDish(): void {
+    const studio = DishStudio.getInstance();
+    if (studio) {
+      studio.quickCycle();
+      return;
+    }
+    const layer = findByName(this.getSceneObject(), "DiegeticLayer");
+    const compiler = layer ? (layer.getComponent(RecipeCompilerService.getTypeName()) as RecipeCompilerService) : null;
+    const cur = compiler ? compiler.getCurrentPresetIndex() : 0;
+    this.eventBus.emit("DISH_COMPILE_REQUESTED", { presetIndex: nextPresetIndex(cur < 0 ? 0 : cur), source: "HUD" });
+  }
+
+  /** K1a STEPS chip (Btn_StepGuide): step card on / off (default on); allowed while Auto Cook runs. */
+  private toggleStepGuide(): void {
+    const se = StepEngine.getInstance();
+    const on = se ? se.toggleCard() : false;
+    if (this.stepButton) {
+      this.stepButton.latched = on;
+      this.styleDirectorButton(this.stepButton);
+    }
+  }
+
   private toggleAutoCook(): void {
     const auto = AutoCookController.getInstance();
     if (auto) auto.toggle();
@@ -391,6 +465,10 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       const key = (ev as any).key ? String((ev as any).key) : "";
       if (key === "7" || key === "Key_7") {
         this.toggleAutoCook();
+        return;
+      }
+      if (key === "8" || key === "Key_8" || (typeof Keys !== "undefined" && (ev as any).key === Keys.Eight)) {
+        if (this.manualAllowed("AI Dish")) this.cycleDish();
         return;
       }
       if (key !== "0" && key !== "Key_0" && !this.manualAllowed(`key ${key}`)) return;
@@ -428,7 +506,12 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
 
     this.buildChronometer(root, CHRONO_CENTER);
     this.buildDirectorPalette(root, DIRECTOR_CENTER);
+    this.buildChefBanner(root, CHEF_BANNER_CENTER);
     this.buildLeafTestHarnessObject(root);
+    MiseFlowButtonTrigger.registerAction("CYCLE_DISH", () => {
+      if (this.manualAllowed("AI Dish")) this.openDishStudio();
+    });
+    MiseFlowButtonTrigger.registerAction("STEP_GUIDE", () => this.toggleStepGuide());
   }
 
   private createGlass(
@@ -673,10 +756,11 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     dock.getTransform().setLocalPosition(center);
     dock.getTransform().setLocalRotation(faceCamera(center));
     dock.createComponent("Component.Canvas");
-    // WS9-P3: third AUTO group -> slightly tighter spacing + 0.93 scale keeps the dock inside the Specs crop
-    dock.getTransform().setLocalScale(new vec3(0.93, 0.93, 0.93));
+    // WS9-P3: third AUTO group -> slightly tighter spacing; v5 AI Dish joins AUTO -> 0.86; K1a Steps chip -> 0.80
+    // keeps the dock the same width inside the Specs crop
+    dock.getTransform().setLocalScale(new vec3(0.8, 0.8, 0.8));
 
-    // v5 capsule dock: COOK chip | Step Cut, Transfer, AI Vision | SIM chip | +25s Drift, 10x Warp, Reset | AUTO chip | Auto Cook
+    // v5 capsule dock: COOK chip | Step Cut, Transfer, AI Vision | SIM chip | +25s Drift, 10x Warp, Reset | AUTO chip | Auto Cook, AI Dish
     const BTN_H = 1.3;
     const BTN_GAP = 0.26;
     const TAG_W = 2.1;
@@ -711,13 +795,17 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         tagColor: COLOR_GOLD_HEAT,
         buttons: [
           { name: "Btn_AutoCook", label: "Auto Cook", accent: COLOR_AUTO_WHITE_GOLD, w: 3.4, onPress: () => { this.toggleAutoCook(); } },
+          // v5 P5: opens the Dish Studio (Key 8 = cycle the prebuilt dishes through the card flow)
+          { name: "Btn_CycleDish", label: "AI Dish", accent: COLOR_VIOLET_AI, w: 2.9, onPress: () => { this.openDishStudio(); } },
+          // v5 K1a: step card on / off (default on)
+          { name: "Btn_StepGuide", label: "Steps", accent: COLOR_EMERALD_DONE, w: 2.5, onPress: () => { this.toggleStepGuide(); } },
         ],
       },
     ];
-    // manual buttons stand down while Auto Cook runs; Reset (cancels it) and Auto Cook itself stay live
+    // manual buttons stand down while Auto Cook runs; Reset (cancels it), Auto Cook itself and Steps stay live
     for (const g of groups) {
       for (const b of g.buttons) {
-        if (b.name === "UI_Btn_Reset" || b.name === "Btn_AutoCook") continue;
+        if (b.name === "UI_Btn_Reset" || b.name === "Btn_AutoCook" || b.name === "Btn_StepGuide") continue;
         const press = b.onPress;
         b.onPress = () => { if (this.manualAllowed(b.label)) press(); };
       }
@@ -772,6 +860,14 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
           // passive trigger: LEAF / automation tap Btn_AutoCook through MiseFlowButtonTrigger.triggerAction
           db.obj.createComponent(MiseFlowButtonTrigger.getTypeName());
         }
+        // v5: passive trigger for LEAF / automation (UIKit Button owns pinch input)
+        if (spec.name === "Btn_CycleDish") db.obj.createComponent(MiseFlowButtonTrigger.getTypeName());
+        if (spec.name === "Btn_StepGuide") {
+          db.obj.createComponent(MiseFlowButtonTrigger.getTypeName());
+          db.latched = true; // card on by default
+          this.styleDirectorButton(db);
+          this.stepButton = db;
+        }
         x += spec.w + (i < group.buttons.length - 1 ? BTN_GAP : 0);
       }
       if (gi < groups.length - 1) {
@@ -789,6 +885,55 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         x += GROUP_GAP;
       }
     });
+  }
+
+  // --------------------------------------------------------------------------
+  // v5 ChefVoiceBannerUI: [ DISH TITLE | coach cue ] dark-glass pill below PLATE IN
+  // --------------------------------------------------------------------------
+  private buildChefBanner(parent: SceneObject, center: vec3): void {
+    const existing = findByName(parent, "ChefVoiceBannerUI");
+    if (existing) existing.destroy();
+    const root = global.scene.createSceneObject("ChefVoiceBannerUI");
+    root.setParent(parent);
+    root.getTransform().setLocalPosition(center);
+    root.getTransform().setLocalRotation(faceCamera(center));
+    root.createComponent("Component.Canvas");
+
+    const w = CHEF_BANNER_W;
+    const h = CHEF_BANNER_H;
+    const g = this.createGlass(root, "ChefBanner_Glass", new vec3(0, 0, 0), new vec2(w, h), withAlpha(COLOR_GLASS, 0.88), withAlpha(COLOR_VIOLET_AI, 0.9), PILL_BORDER, h / 2, 0.9);
+    this.bannerGlass = g.style;
+    // two rows (dish title over the coach cue) so both read at spec size; same width as v5 P3
+    const rowW = w - 1.3;
+    this.bannerTitle = this.createText(root, "ChefBanner_Title", "", 46, 800, COLOR_VIOLET_AI, new vec3(0, 0.56, 0.03), rowW, 1.0);
+    this.createGlass(root, "ChefBanner_Divider", new vec3(0, -0.02, 0.02), new vec2(w * 0.55, 0.04), withAlpha(COLOR_SILVER, 0.5), withAlpha(COLOR_SILVER, 0.5), 0.0, 0.02, 0.9);
+    this.bannerCoach = this.createText(root, "ChefBanner_Coach", "", 36, 600, COLOR_TEXT_HEADING, new vec3(0, -0.6, 0.03), rowW, 1.0);
+    // single line: short default cue stays full size, long coach lines shrink to fit the pill width
+    this.bannerCoach.horizontalOverflow = HorizontalOverflow.Shrink;
+    this.bannerCoach.verticalOverflow = VerticalOverflow.Overflow;
+    this.setBannerDish(getPreset(0));
+  }
+
+  private setBannerDish(bp: any): void {
+    if (!bp || !this.bannerTitle || !this.bannerCoach) return;
+    this.bannerTitle.text = String(bp.dishTitle || "");
+    // short default cue (legible at spec size): the cut the dish is built on
+    this.bannerDefaultCoach = String(bp.cutLabel || bp.cuisineTag || "").toUpperCase();
+    this.skilletVerb = typeof bp.skilletPillVerb === "string" && bp.skilletPillVerb.length > 0 ? bp.skilletPillVerb.toUpperCase() : "SEAR";
+    this.sauceVerb = typeof bp.saucePillVerb === "string" && bp.saucePillVerb.length > 0 ? bp.saucePillVerb.toUpperCase() : "SAUCE";
+    this.isDefaultDishUi = String(bp.dishId || "") === getPreset(0).dishId;
+    this.bannerCoach.text = this.bannerDefaultCoach;
+    this.bannerCoachUntil = -1;
+    this.setBannerBorder(COLOR_VIOLET_AI);
+  }
+
+  private setBannerBorder(c: vec4): void {
+    if (!this.bannerGlass) return;
+    const want = withAlpha(c, 0.9);
+    if (!this.bannerGlass.border.equal(want)) {
+      this.bannerGlass.border = want;
+      applyGlass(this.bannerGlass);
+    }
   }
 
   private createDirectorButton(
@@ -1000,7 +1145,31 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       }
     });
 
+    // v5 dish title + AI sous-chef cues on the ChefVoiceBannerUI
+    // P5: a staged dish (studio card flow) shows its title / pill verbs at the reveal, never before
+    this.eventBus.on("DISH_BLUEPRINT_APPLIED", (data: any) => {
+      if (!data || !data.blueprint) return;
+      if (data.staged) this.pendingBannerDish = data.blueprint;
+      else {
+        this.pendingBannerDish = null;
+        this.setBannerDish(data.blueprint);
+      }
+    });
+    this.eventBus.on("BRIEFING_COMPLETED", () => {
+      if (this.pendingBannerDish) this.setBannerDish(this.pendingBannerDish);
+      this.pendingBannerDish = null;
+    });
+    this.eventBus.on("CHEF_COACH_SPEAK", (data: any) => {
+      if (!data || !data.text || !this.bannerCoach) return;
+      this.bannerCoach.text = `CHEF AI: "${String(data.text)}"`;
+      this.bannerCoachUntil = this.clock + COACH_HOLD_SEC;
+      const cat = String(data.category || "");
+      this.setBannerBorder(cat === "PREP" ? COLOR_CYAN_PREP : cat === "SEAR" ? COLOR_GOLD_HEAT : cat === "DRIFT" ? COLOR_AMBER_DRIFT : COLOR_VIOLET_AI);
+    });
+
     this.eventBus.on("RESET_REQUESTED", () => {
+      this.pendingBannerDish = null;
+      this.setBannerDish(getPreset(0));
       this.isDishReady = false;
       this.isSalmonFlipped = false;
       this.isSalmonFlipping = false;
@@ -1031,9 +1200,11 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const sRem = this.dag ? this.dag.getSkilletRemaining() : 60;
     const t = formatMMSS(sRem);
     if (this.isDishReady) {
+      if (!this.isDefaultDishUi) return { metric: `${this.skilletVerb} PLATED`, action: "DISH READY", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
       return { metric: "SALMON PLATED", action: "CRISPY SIDE UP", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
     }
     if (this.isPlated) {
+      if (!this.isDefaultDishUi) return { metric: `${this.skilletVerb} DONE`, action: "READY TO PLATE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
       return { metric: "SALMON DONE", action: "REST, THEN PLATE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
     }
     if (this.isAiScanning) {
@@ -1062,18 +1233,20 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       return { metric: `FLIPPED ${t}`, action: "CRUST SIDE UP", accent: COLOR_EMERALD_DONE, metricColor: COLOR_TEXT_HEADING, expanded: true, key: "flipped" };
     }
     if (sRem > 0 && sRem <= 10) {
-      return { metric: `SEAR ${t}`, action: sRem <= 3 ? "FLIP NOW" : "READY TO FLIP", accent: COLOR_GOLD_HEAT, metricColor: COLOR_GOLD_HEAT, expanded: true, key: "flip" };
+      return { metric: `${this.skilletVerb} ${t}`, action: sRem <= 3 ? "FLIP NOW" : "READY TO FLIP", accent: COLOR_GOLD_HEAT, metricColor: COLOR_GOLD_HEAT, expanded: true, key: "flip" };
     }
-    return { metric: `SEAR ${t}`, action: "FLIP AT ZERO", accent: COLOR_GOLD_HEAT, metricColor: COLOR_TEXT_HEADING, expanded: this.clock < this.holdExpandUntil, key: "sear" };
+    return { metric: `${this.skilletVerb} ${t}`, action: "FLIP AT ZERO", accent: COLOR_GOLD_HEAT, metricColor: COLOR_TEXT_HEADING, expanded: this.clock < this.holdExpandUntil, key: "sear" };
   }
 
   private sauceView(): StationView {
     const pRem = this.dag ? this.dag.getSaucepotRemaining() : 50;
     const t = formatMMSS(pRem);
     if (this.isDishReady) {
+      if (!this.isDefaultDishUi) return { metric: `${this.sauceVerb} PLATED`, action: "SERVED OVER THE DISH", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
       return { metric: "SAUCE SPOONED", action: "OVER THE SALMON", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "dish" };
     }
     if (this.isPlated) {
+      if (!this.isDefaultDishUi) return { metric: `${this.sauceVerb} DONE`, action: "READY TO SERVE", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
       return { metric: "SAUCE DONE", action: "SPOON OVER SALMON", accent: COLOR_EMERALD_DONE, metricColor: COLOR_EMERALD_DONE, expanded: false, key: "plated" };
     }
     if (this.isDriftActive) {
@@ -1091,7 +1264,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       const fresh = this.clock < this.transferExpandUntil;
       return { metric: `SIMMER ${t}`, action: "SHALLOTS IN - STIR", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: fresh, key: "simmer" };
     }
-    return { metric: `SAUCE ${t}`, action: "WAITS ON PREP", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: false, key: "wait" };
+    return { metric: `${this.sauceVerb} ${t}`, action: "WAITS ON PREP", accent: COLOR_CYAN_PREP, metricColor: COLOR_TEXT_HEADING, expanded: false, key: "wait" };
   }
 
   private prepView(): StationView {
@@ -1271,6 +1444,12 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     if (this.isAiScanning) {
       this.aiScanTimer -= dt;
       if (this.aiScanTimer <= 0) this.isAiScanning = false;
+    }
+
+    if (this.bannerCoachUntil > 0 && this.clock > this.bannerCoachUntil && this.bannerCoach) {
+      this.bannerCoachUntil = -1;
+      this.bannerCoach.text = this.bannerDefaultCoach;
+      this.setBannerBorder(COLOR_VIOLET_AI);
     }
 
     this.refreshAll();

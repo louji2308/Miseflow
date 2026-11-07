@@ -3,6 +3,7 @@ import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { makeEmissiveMaterial } from "./StationPropsBuilder";
 import { buildUnitQuadMesh, createWorldLabel, faceDirectorCamera, tint } from "./DAGCounterConduit";
 import { FLIP_DURATION_SEC, SpatulaFlipRig } from "./SpatulaFlipRig";
+import { ProteinRegistry } from "./ProteinGenerators";
 
 const CYAN: [number, number, number] = [0.0, 0.94, 1.0];
 const ICE: [number, number, number] = [0.75, 1.0, 1.0];
@@ -22,6 +23,20 @@ const ARC_SWING = (50 * Math.PI) / 180;
 const GUIDE_LEAD_SEC = 1.0;
 
 export type SpatulaReason = "NONE" | "FLIP_WINDOW" | "VISION_OPTIMAL" | "MANUAL";
+
+/**
+ * v5: a kinematic that replaces KINE_SPATULA_FLIP_180 for the active dish (KINE_PAN_TOSS_ROLL).
+ * Registered with SpatulaTechniqueGuide.setFlipOverride; dish 01 never activates it.
+ */
+export interface FlipTechniqueOverride {
+  /** True when the active dish (or an explicit request) wants this technique instead of the spatula. */
+  isActive(): boolean;
+  /** Start the motion; call done() once the protein ends seared-side up. False = cannot run (spatula fallback). */
+  start(done: () => void): boolean;
+  isBusy(): boolean;
+  /** Technique id reported on SALMON_FLIPPED. */
+  techniqueId(): string;
+}
 
 function findByName(parent: SceneObject, name: string): SceneObject | null {
   if (parent.name === name) return parent;
@@ -135,6 +150,16 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
   private handlers: { ev: MiseFlowEventType; cb: (d?: any) => void }[] = [];
 
+  private static flipOverride: FlipTechniqueOverride | null = null;
+  private overrideCbs: (() => void)[] = [];
+  /** Guide anchor over the salmon fillet as built; A3 re-anchors over the active protein prop (if any) on show. */
+  private anchor0: vec3 | null = null;
+
+  /** v5: plug in (or clear with null) the alternative flip technique. */
+  public static setFlipOverride(o: FlipTechniqueOverride | null): void {
+    SpatulaTechniqueGuide.flipOverride = o;
+  }
+
   onAwake(): void {
     this.createEvent("OnStartEvent").bind(() => {
       this.resolveDag();
@@ -179,7 +204,28 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
     this.autoFlipUsed = true;
     this.flipArmT = -1;
     if (!this.rig.isReady()) this.rig.tryInit(this.stationsRoot);
+    const o = SpatulaTechniqueGuide.flipOverride;
+    if (o && this.rig.isReady() && !this.rig.isPlaying() && (o.isBusy() || (o.isActive() && !this.rig.isFlipped()))) {
+      if (onDone) this.overrideCbs.push(onDone);
+      if (o.isBusy()) return true;
+      const started = o.start(() => this.onOverrideDone(o.techniqueId()));
+      if (started) return true;
+      this.overrideCbs = []; // technique could not run: fall back to the spatula flip
+    }
     return this.rig.play(onDone);
+  }
+
+  private onOverrideDone(technique: string): void {
+    const cbs = this.overrideCbs;
+    this.overrideCbs = [];
+    this.rig.completeExternalFlip(technique);
+    for (const cb of cbs) {
+      try {
+        cb();
+      } catch (e) {
+        print(`[SpatulaGuide] onDone error: ${e}`);
+      }
+    }
   }
 
   public isFlipped(): boolean {
@@ -187,12 +233,14 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
   }
 
   public isFlipping(): boolean {
-    return this.rig.isPlaying();
+    const o = SpatulaTechniqueGuide.flipOverride;
+    return this.rig.isPlaying() || (!!o && o.isBusy());
   }
 
   /** Unflipped salmon, spatula at rest, auto flip re-armed (also done on RESET_REQUESTED). */
   public resetFlip(): void {
     this.rig.reset();
+    this.overrideCbs = [];
     this.flipArmT = -1;
     this.autoFlipUsed = false;
   }
@@ -256,6 +304,22 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
     return new vec3(0.309, 0, 0.951);
   }
 
+  /** A3: hover the guide over the active protein prop's top; no prop = the salmon anchor exactly as built. */
+  private reanchor(): void {
+    if (!this.anchor0) return;
+    const p = ProteinRegistry.getActive();
+    let a = this.anchor0;
+    if (p) {
+      const me = this.getSceneObject().getTransform();
+      const pt = p.getObject().getTransform();
+      const l = me.getInvertedWorldTransform().multiplyPoint(pt.getWorldPosition());
+      const pan = p.getPan();
+      const k = (pan ? pan.getTransform().getWorldScale().y : 1) / Math.max(1e-4, me.getWorldScale().y);
+      a = new vec3(l.x, l.y + Math.max(1.35, p.getHeight() * k + 0.2), l.z);
+    }
+    this.root.getTransform().setLocalPosition(a);
+  }
+
   private makeVisual(parent: SceneObject, name: string, mesh: RenderMesh, mat: Material): SceneObject {
     const o = global.scene.createSceneObject(name);
     o.setParent(parent);
@@ -273,6 +337,7 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
     this.root.setParent(parent);
     const anchor = this.salmonAnchor();
     this.root.getTransform().setLocalPosition(anchor);
+    this.anchor0 = anchor;
 
     // Arc frame: +X runs from the fillet's near (spatula) side over the top to the far side - the
     // roll the physical flip performs - swung ARC_SWING toward the camera's right so the hairline
@@ -380,6 +445,7 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
     this.alpha += (want - this.alpha) * Math.min(1, dt * 6);
     if (Math.abs(want - this.alpha) < 0.02) this.alpha = want;
     const on = want > 0 || this.alpha > 0.02;
+    if (on && !this.root.enabled) this.reanchor();
     if (this.root.enabled !== on) this.root.enabled = on;
     if (!on) return;
 

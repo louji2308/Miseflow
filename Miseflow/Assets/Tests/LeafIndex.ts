@@ -11,7 +11,12 @@ import { GazeWayfindingBeaconScenario } from "./GazeWayfindingBeaconScenario";
 import { ProposalGateRejectionScenario } from "./ProposalGateRejectionScenario";
 import { SpatulaFlipGuideScenario } from "./SpatulaFlipGuideScenario";
 import { AutoCookFullFlowScenario } from "./AutoCookFullFlowScenario";
-
+import { UniversalDishPageTableScenario } from "./UniversalDishPageTableScenario";
+import { MultiDishAutoCookScenario } from "./MultiDishAutoCookScenario";
+import { DishStudioFlowScenario } from "./DishStudioFlowScenario";
+import { StepEngineScenario } from "./StepEngineScenario";
+import { DishBiryaniCookScenario } from "./DishBiryaniCookScenario";
+import { DishNoodlesCookScenario } from "./DishNoodlesCookScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -57,6 +62,33 @@ export class LeafIndex extends BaseScriptComponent {
       typename: AutoCookFullFlowScenario.getTypeName(),
       // test-only pacing multiplier for Auto Cook dwell times ("1" = real demo pacing, ~60 s)
       parameters: { speed: "8" },
+    },
+    {
+      id: "universal-dish-page-table",
+      typename: UniversalDishPageTableScenario.getTypeName(),
+    },
+    {
+      id: "multi-dish-auto-cook",
+      typename: MultiDishAutoCookScenario.getTypeName(),
+      parameters: { speed: "8" },
+    },
+    {
+      id: "dish-studio-flow",
+      typename: DishStudioFlowScenario.getTypeName(),
+    },
+    {
+      id: "step-engine",
+      typename: StepEngineScenario.getTypeName(),
+    },
+    {
+      id: "dish-biryani-cook",
+      typename: DishBiryaniCookScenario.getTypeName(),
+      parameters: { speed: "8" },
+    },
+    {
+      id: "dish-noodles-cook",
+      typename: DishNoodlesCookScenario.getTypeName(),
+      parameters: { speed: "8", chip: "2" },
     },
   ];
 

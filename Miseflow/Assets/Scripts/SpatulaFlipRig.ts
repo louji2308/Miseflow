@@ -1,6 +1,7 @@
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
 import { MeshAcc, SALMON_DOME_H, SALMON_SKIN_BULGE, makePbrMaterial, makeTexturedPbr } from "./StationPropsBuilder";
 import { faceDirectorCamera } from "./DAGCounterConduit";
+import { ProteinProp, ProteinRegistry, proteinSearEase } from "./ProteinGenerators";
 
 const DEG = Math.PI / 180;
 const TEX_STEAM = requireAsset("../Textures/Tex_Steam.png") as Texture;
@@ -266,6 +267,16 @@ export class SpatulaFlipRig {
   private drops: { obj: SceneObject; v: vec3; p0: vec3 }[] = [];
   private fxT: number = -1;
 
+  // A3 generic target: the active ProteinProp (ProteinRegistry) rolls piece by piece exactly like the fillet;
+  // none active = the salmon fillet with the original numbers (salmonC, near 2.9, fillet top height).
+  private protein: ProteinProp | null = null;
+  private rollPieces: { obj: SceneObject; pos0: vec3; rot0: quat; scale0: vec3; H: number }[] = [];
+  private salmonC!: vec3;
+  private near: number = 2.9;
+  private topH: number = SALMON_DOME_H + SALMON_SKIN_BULGE;
+  private pieceUnit: number = 1;
+  private sear0: number = 0;
+
   /** Bind to SkilletStation / SalmonFillet under StationsRoot and build the prop. False until props exist. */
   public tryInit(stationsRoot: SceneObject | null): boolean {
     if (this.ready) return true;
@@ -299,6 +310,7 @@ export class SpatulaFlipRig {
     const across = new vec3(wv.x, 0, wv.z).normalize();
     this.w = quat.angleAxis(APPROACH_SWING, vec3.up()).multiplyVec3(across).normalize();
     this.approachYaw = Math.atan2(-this.w.x, -this.w.z);
+    this.salmonC = this.C;
 
     this.buildProp();
     this.buildFx();
@@ -332,10 +344,39 @@ export class SpatulaFlipRig {
     }
     if (onDone) this.callbacks.push(onDone);
     if (this.t >= 0) return true;
+    this.bindTarget();
+    this.sear0 = this.protein ? this.protein.getDoneness() : 0;
     this.t = 0;
     this.landed = false;
     this.bus.emit("SALMON_FLIP_STARTED", { durationSec: FLIP_DURATION_SEC });
     return true;
+  }
+
+  /**
+   * v5 KINE_PAN_TOSS_ROLL: another technique already rolled the protein crust-up. Adopt the exact
+   * landed pose of the spatula flip (seared side up, herb re-laid), mark it flipped and emit
+   * SALMON_FLIPPED so PlatingFinisher / Auto Cook continue as after a spatula flip.
+   */
+  public completeExternalFlip(technique: string): void {
+    if (!this.ready || this.t >= 0) return;
+    this.bindTarget();
+    this.applySalmon(FLIP_DURATION_SEC);
+    if (this.protein) {
+      this.protein.markFlipped(true);
+      this.protein.setDoneness(1);
+    }
+    this.flipped = true;
+    this.applyRest();
+    this.bus.emit("SALMON_FLIPPED", { durationSec: FLIP_DURATION_SEC, technique: technique });
+    const cbs = this.callbacks;
+    this.callbacks = [];
+    for (const cb of cbs) {
+      try {
+        cb();
+      } catch (e) {
+        print(`[SpatulaFlipRig] onDone error: ${e}`);
+      }
+    }
   }
 
   /** Unflipped salmon, spatula at rest, fx hidden; pending callbacks are dropped. */
@@ -350,6 +391,10 @@ export class SpatulaFlipRig {
     st.setLocalRotation(this.salmonRot0);
     st.setLocalScale(this.salmonScale0);
     this.setHerb(false, 1);
+    if (this.protein && this.protein.isLive()) this.protein.resetToRaw();
+    this.protein = null;
+    this.rollPieces = [];
+    this.bindTarget();
     this.applyRest();
     this.fxT = -1;
     for (const s of this.steam) s.obj.enabled = false;
@@ -371,6 +416,7 @@ export class SpatulaFlipRig {
     if (this.t >= FLIP_DURATION_SEC) {
       this.t = -1;
       this.flipped = true;
+      if (this.protein && this.protein.isLive()) this.protein.markFlipped(true);
       this.applyRest();
       this.bus.emit("SALMON_FLIPPED", { durationSec: FLIP_DURATION_SEC });
       const cbs = this.callbacks;
@@ -472,6 +518,25 @@ export class SpatulaFlipRig {
     return Math.max(0, Math.min(1, (t - T_UNDER) / (T_LAND - T_UNDER)));
   }
 
+  /** A3: pick the flip target (active ProteinProp pieces, else the salmon fillet) and its spatula frame. */
+  private bindTarget(): void {
+    const p = ProteinRegistry.getActive();
+    if (p === this.protein && (p !== null || this.rollPieces.length === 0)) return;
+    this.protein = p;
+    this.rollPieces = [];
+    this.C = this.salmonC;
+    this.near = 2.9;
+    this.topH = SALMON_DOME_H + SALMON_SKIN_BULGE;
+    this.pieceUnit = 1;
+    if (!p) return;
+    for (const pc of p.getPieces()) this.rollPieces.push({ obj: pc.obj, pos0: pc.homePos, rot0: pc.homeRot, scale0: pc.homeScale, H: pc.halfH * 2 });
+    const l = this.station.getTransform().getInvertedWorldTransform().multiplyPoint(p.getObject().getTransform().getWorldPosition());
+    this.C = new vec3(l.x, l.y, l.z);
+    this.near = Math.max(1.2, Math.min(6.5, p.getHalfExtent() * 0.82));
+    this.topH = p.getHeight();
+    this.pieceUnit = 1 / Math.max(0.05, p.getObject().getTransform().getLocalScale().y);
+  }
+
   private applySalmon(t: number): void {
     const H = SALMON_DOME_H;
     let h = 0;
@@ -493,6 +558,23 @@ export class SpatulaFlipRig {
       // two pats from the spatula
       const pk = (t - (T_LAND + 0.3)) / (T_PAT - T_LAND - 0.3);
       if (pk > 0 && pk < 1) squash = Math.min(squash, 1 - 0.05 * Math.abs(Math.sin(pk * Math.PI * 2)));
+    }
+    if (this.rollPieces.length > 0) {
+      // A3 protein prop: every piece takes the fillet's arc + 180 deg roll about its own pivot; the crust sears in
+      const rxp = quat.angleAxis(theta, vec3.right());
+      const u = this.pieceUnit;
+      for (const rp of this.rollPieces) {
+        if (!rp.obj || isNull(rp.obj)) continue;
+        const cp = new vec3(0, rp.H / 2, 0);
+        const off = rp.rot0.multiplyVec3(cp.sub(rxp.multiplyVec3(cp)));
+        const ppos = rp.pos0.add(off).add(new vec3(0, h * u, s * u));
+        const ptr = rp.obj.getTransform();
+        ptr.setLocalRotation(rp.rot0.multiply(rxp));
+        ptr.setLocalPosition(t >= T_LAND ? ppos.add(new vec3(0, -(1 - squash) * rp.H, 0)) : ppos);
+        ptr.setLocalScale(new vec3(rp.scale0.x, rp.scale0.y * squash, rp.scale0.z));
+      }
+      if (this.protein && this.protein.isLive()) this.protein.setDoneness(Math.max(this.sear0, proteinSearEase(this.flipK(t))));
+      return;
     }
     const rx = quat.angleAxis(theta, vec3.right());
     const c = new vec3(0, H / 2, 0);
@@ -554,11 +636,11 @@ export class SpatulaFlipRig {
   private applySpatula(t: number): void {
     const floor = this.C.y;
     const yaw = this.approachYaw;
-    const near = 2.9; // fillet half-extent along the (swung) approach line, pan-local units
+    const near = this.near; // fillet (2.9) / protein half-extent along the (swung) approach line, pan-local units
     const hover: SpatPose = { p: this.at(near + 2.1, floor + 2.1), yaw, pitch: 18 * DEG };
     const contact: SpatPose = { p: this.at(near + 0.25, floor + 0.02), yaw, pitch: 18 * DEG };
     const under: SpatPose = { p: this.at(-near - 0.5, floor + 0.02), yaw, pitch: 3 * DEG };
-    const topY = floor + SALMON_DOME_H + SALMON_SKIN_BULGE;
+    const topY = this.protein ? floor + this.topH : floor + SALMON_DOME_H + SALMON_SKIN_BULGE;
     const away: SpatPose = { p: this.at(near + 3.6, floor + 3.4), yaw, pitch: 6 * DEG };
     const patHi: SpatPose = { p: this.at(-near + 0.2, topY + 0.7), yaw, pitch: 0 };
     let pose: SpatPose;

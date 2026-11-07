@@ -1,141 +1,94 @@
-# MiseFlow AR v4.0 – Master TODO (handover-ready)
+# MiseFlow AR v5.0 – Master TODO (Universal AI Culinary Mastery) – handover-ready
 
 **Goal: WIN Learn AR with SPECS** (deadline 2026-11-09 14:00 PST). Judges see only the <3 min Lens Studio Preview video.
-Source: Drive doc "MiseFlow AR v4.0 – Winning Master Blueprint & Audit" (account taylankaraca78). Plan: `~/.claude/plans/parsed-tumbling-bird.md`. Visual target: `devpost/reference/v4-target-render.webp`.
+**Specs (source of truth):** `implementation_plan.md`, `idea_and_design_v5_universal_ai.md` (repo root) + the user's pasted master catalogue (summarised below). v4 is done and in git (`1ef5283`, pushed).
 
 ## HANDOVER – read first if you are a new agent
-- **States (exactly three, in this order):** `## Yet to complete` → `## In progress` → `## Completed`
-### WS10 – (DONE: 10/10 LEAF, 0 TS errors) User feedback after WS9 (screenshot `images/3.png`: blue curved "wire" from board to saucier during transfer)
-- [x] 1 Remove the wire-like blue ribbon during transfer (TransferArcTube must stay ENABLED for LEAF but be visually invisible; bowl carrying the food is the only visual)
-- [x] 2 Add steam to the final plated dish
-- [x] 3 Saucier starts EMPTY (no sauce at start)
-- [x] 4 Transfer happens twice in sequence: first the measured PORTION (volumetric portion) into the saucier, second the diced VEGETABLES; sauce visibly builds up (base → red sauce with herbs); Btn_Transfer LEAF strings unchanged; Auto Cook updated for the longer transfer; reset empties again
-- [x] 5 Steam on pan and saucier only in the correct time windows: skillet steam while searing, saucier steam only after ingredients are in until plating tilt; none when idle/empty
-- [x] 6 Slightly change the colour of the counter base (subtle shift, keep additive-display brightness; report before/after hex)
-- [x] 7 Recompile 0 errors, 10/10 LEAF, screenshots; update README/design brief mention
-
-. Move a line between sections as work changes; never duplicate; update this file BEFORE and AFTER every task.
-- **Project:** `Miseflow/` (Lens Studio, TS). Scripts `Miseflow/Assets/Scripts`, tests `Miseflow/Assets/Tests` (LeafIndex.ts, 9 scenarios). README.md has the upgrade log + recording checklist; design brief at `devpost/design-brief.md` (identical copy in `Miseflow/devpost/`).
-- **Tools:** drive Lens Studio only via MCP (`mcp__lens-studio__*`, `mcp__lens-studio-codemode__execute`); one agent at a time may drive the preview. Recompile with RecompileTypeScriptTool, then run LEAF in preview.
+- **Exactly three states, in this order:** "Yet to complete" → "In progress" → "Completed". Move a line between sections as work changes; never duplicate; update this file BEFORE and AFTER every task.
+- **Project:** `Miseflow/` (Lens Studio TS). Scripts `Miseflow/Assets/Scripts` (+ `AI/`), tests `Miseflow/Assets/Tests` (LeafIndex.ts; 12 scenarios today).
+- **Tools:** Lens Studio ONLY via MCP in **code mode** (`mcp__lens-studio-codemode__execute`, many operations batched in ONE call); normal `mcp__lens-studio__*` only where code mode cannot (e.g. RecompileTypeScriptTool). One agent at a time drives the preview. No pinch/key injection in preview (blocked): trigger via the LEAF interactor / controller `triggerAction`. Short calls, explicit timeouts. Each LEAF run restarts the lens (~3-5 min).
 - **Preview camera pose (re-set before screenshots/recording):** MovePreviewCamera pos (0,25.1,-21.4) lookAt (0,-4.9,-73.4). Camera Object has DeviceTracking so Scene.scene camera transform is ignored.
-- **DiegeticLayer, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle are built at startup by `MiseFlowSpatialUI.ensureHeroComponents`** (not saved in Scene.scene) – intentional.
-- **Hard invariants:** all 9 LEAF scenarios pass; never rename LEAF-asserted objects/strings (StationsRoot, PrepBoardStation, SkilletStation, SaucepotStation, Prep/Skillet/SaucepotStatusLabel, LaserCutCurtain, VolumetricPortionDome, TransferArcTube, PlatingDebriefCard, DriftDecisionCard, Btn_*, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle; substrings "CHOP SHALLOTS", "CHOP n/8", "PORTION DOME 100%", "PREP TRANSFERRED", "DROP SHALLOTS", "DEFERRED (+25s)", "PLATED", "ALERT: VERIFY BURNER", "HOLD ACKNOWLEDGED", "GATE REJECTED (<0.55)").
-- **Secrets:** never commit keys. Anthropic key lives in repo-root `.env` (ignored); `powershell -File tools\sync-env.ps1` writes the ignored `Assets/Scripts/AI/LocalSecrets.ts`. A key embedded in a Lens is extractable: local preview/recording only, never publish a Lens built with it.
-- **Git:** last commit `4dbadbf` (WS7 Anthropic switch + WS8 restyle). WS9 work is uncommitted until the user asks. Unrelated untracked files (.agents, .claude, agent/, docs/, debate rooms, *_PLAN.md, skills-lock.json, IDEA & DESIGN.md edits) are the user's – do not commit them unless asked.
-- **Owner key:** [H]=haiku 5.5 low · [S]=sonnet 5.5 medium · [O]=opus 5.5 high · [ME]=orchestrator
+- **Hero components are built at startup by `MiseFlowSpatialUI.ensureHeroComponents`** (DiegeticLayer, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle, AutoCookController, PlatingFinisher, RecipeCompilerService, SpatialBriefingDeck, VoiceSousChefController, DishBlueprintApplier, PanTossRoll, LadleOrbitalStir …), not saved in Scene.scene – intentional; add new components the same way.
+- **Hard invariants (never violate):**
+  1. All LEAF scenarios keep passing; never rename/remove LEAF-asserted objects/strings: StationsRoot, PrepBoardStation, SkilletStation, SaucepotStation, Prep/Skillet/SaucepotStatusLabel, LaserCutCurtain, VolumetricPortionDome, TransferArcTube, PlatingDebriefCard, DriftDecisionCard, Btn_StepChop/FillPortion/Transfer/CheckSear/ToggleHold/ToggleTimeWarp/Reset/AutoCook/CycleDish/BriefingPrev/Next/Skip, EdgeBeacon_Left/Right, SpatulaGuideRoot, VisionScanReticle; substrings "CHOP SHALLOTS", "CHOP n/8", "PORTION DOME 100%", "PREP TRANSFERRED", "DROP SHALLOTS", "DEFERRED (+25s)", "PLATED", "ALERT: VERIFY BURNER", "HOLD ACKNOWLEDGED", "GATE REJECTED (<0.55)".
+  2. Boot and `Btn_Reset` default to dish `01_salmon_beurre_blanc` with the Briefing Deck closed.
+  3. Keep the -30° chef camera pose.
+  4. A clean clone compiles with 0 TS errors BEFORE any key exists (tracked empty-key `LocalSecrets.ts`).
+- **PREBUILT COOKINGS RULE (user, strict):** the current salmon + beurre-blanc sauce project is NEVER removed or rewritten. It is dish #1 in `PREBUILT_COOKINGS` (default at boot/Reset). v5 only ADDS dishes.
+- **TOKEN RULE (user, strict):** code mode only, many operations per call; grep/large reads instead of many small reads; no needless screenshots; minimal narration.
+- **ANTHROPIC ONLY:** single provider = Anthropic Messages API via InternetModule fetch. NO OpenAI/Gemini/other keys or SDKs; ignore the pasted text's `FABLE_API_KEY`/"Fable" key. Single secret `ANTHROPIC_API_KEY` (repo-root `.env` → `tools\sync-env.ps1` → tracked-stub `Assets/Scripts/AI/LocalSecrets.ts`, skip-worktree). Never commit a real key (scan staged diff for `sk-ant-` / `sk-`).
+- **Models are user-decided later:** model ids live ONLY in `Assets/Scripts/AI/AiModelConfig.ts` as empty-string placeholders (`""` = live AI off → offline presets only). Never hardcode a model id elsewhere.
+- **ASSET LIST RECEIVED (user pasted the master catalogue):** vegetables #101-#115 + #122-#130, starches #116-#121, proteins #140-#149, spices/dairy/oils/legumes #160-#166, vessels/tools/service ware #301-#355, 9 kinematic primitives (ROCK_CHOP, TWO_STAGE_POUR, SPATULA_FLIP_180, PAN_TOSS_ROLL, LADLE_ORBITAL_STIR, NOODLE_LIFT_TOSS, RICE_DUM_LAYER, WHISK_EMULSION, CONVERGENCE_PLATING), 6 flagship dishes (01 salmon beurre blanc, 02 mushroom dum biryani, 03 wok-tossed hakka noodles, 04 prime ribeye au poivre, 05 paneer tikka makhani, 06 butter-garlic tiger prawn pasta). Built as procedural MeshAcc generators in batches A1-A5 below, one agent at a time; Spectacles-light meshes, bottom-centre pivot, additive-display-friendly colours (no pure black).
+- **Git:** commit only when the user asks. Unrelated untracked files (.agents, .claude, agent/, docs/, debate rooms, *_PLAN.md, skills-lock.json, IDEA & DESIGN.md edits) are the user's – never commit them. Old RapidRouter key is in public history but revoked.
+- **Owner key:** [H]=haiku 5.5 · [S]=sonnet 5.5 · [O]=opus 5.5 · [ME]=orchestrator; effort after the slash.
+
+## Agent/model plan (by complexity, design importance, risk)
+| Phase | Agent | Why |
+|---|---|---|
+| D1 data expansion (schema, 6 dishes, catalogue tables, events) | [S/high] | typed data + API correctness, no 3D risk |
+| P5 dish picker + staged load + reveal | [O/high] | design-critical UI + async state staging in big files |
+| A1-A4a veg / starch / protein / hero vessels | [O/high] each | geometry quality is the visual score |
+| A4b secondary tools, A5 spices | [S/high], [S/medium] | simpler props |
+| K1 kinematics + dish step engine | [O/high] | riskiest integration (DAG, Auto Cook, plating) |
+| T1 tests | [S/medium] | patterned scenarios |
+| docs/todo bookkeeping | [H/low] | mechanical |
 
 ---
 
 ## Yet to complete
 
-### WS11 – Make AI Vision real (discussion in progress; waiting for the user's choice)
-- [x] Hardcoded vision values centralized in `Assets/Scripts/AI/VisionConfig.ts` (model, endpoint, version, prompts, schema, confidence floor 0.55, caps, scripted `offlineScans`); scripted scans kept ONLY as offline fallback; default `liveByDefault=false`. **NOT yet compiled or LEAF-tested** (haiku could not compile while WS10 runs) → after WS10 finishes: RecompileTypeScriptTool + 10/10 LEAF.
-- [ ] Decide with user: (1) real vision on AI Vision button (frame → claude-sonnet-5-5 → JSON → ProposalGate → DAG), (2) drift re-plan assistant (task graph → Claude → validated re-plan + coaching line), (3) recipe-to-DAG compiler (stretch), (4) voice (skip)
-- [ ] Spike: one live call from Lens Studio preview (does InternetModule fetch work in preview? latency?) with the key from `.env` via `tools\sync-env.ps1`
-- [ ] Devpost page returned 403 to WebFetch and the Devpost connector is unauthenticated; rules/criteria taken from the Drive audit (Design, Technical Implementation, Innovation, Presentation; <3 min preview video; judges don't run the repo)
+### Dish Studio flow rules (user, strict – latest wording, overrides earlier picker rules where they differ) – applies to P5
+1. **Entry:** tapping the AI Cook / `AI Dish` button switches to a full-view **Dish Studio**: the WHOLE stove/counter/props/pills/HUD are hidden (hidden, not destroyed or reset) and the view shows only two large cards: **Speak** and **Keyboard**. A **small Back button in the corner** returns to the existing setup exactly as it was (NOT a Reset – no state lost).
+2. **The setup never reappears during the flow** – not while typing on the keyboard, not while confirming/identifying, not during the briefing cards. It returns only on Back or after "Let's cook".
+3. Speech path: show "Heard: <text>" → user may EDIT that transcript (speech path only; keyboard text is already typed) → **Confirm** → send to Claude. Unknown dish → exact message **"Dish not found. Enter the correct dish name."** and input reopens (no silent fallback to another dish).
+4. **Everything is a card with LESS-ROUNDED (near-square) corners**, one card per step, ONE card at a time with **`<` and `>`** buttons to move between cards and a **Skip** button to skip the cards; the **last card shows an extra "Let's cook" button**.
+5. While the dish is identified, Loader A (ingredients/starch/protein/spices) + Loader B (vessels/tools/service ware) run **in parallel while the user swipes the cards**.
+6. On "Let's cook" (or Skip): the setup returns and the new dish's props **appear ONE BY ONE (staggered pop-in as each finishes loading) – never all at once and never a blank wait**. If some assets are not ready yet, show a **proper attractive loading state that does not feel like waiting** (animated progress, ingredient/vessel items "arriving" one after another, live status line) and let each item appear as soon as it is ready.
+7. After that the dish works **step by step per the dish's own `steps[]`**, manual and Auto Cook.
+8. Boot/Reset stays salmon (Prebuilt Cookings #1), studio closed, setup visible.
 
-### WS9 – User-requested realism + full-flow pass (user request after WS8; image `images/2.png` = skillet close-up showing oversized plate and too-broad burner arcs)
-**WS9 design decisions (follow these):**
-- Veg row on the board, left→right, whole at start, colours exactly as now: red onion (purple), garlic (white/cream), greens/parsley (green), tomato (red), yellow chilli (yellow).
-- The 8 `Step Cut` presses ("CHOP n/8", LaserCutCurtain advances, VolumetricPortionDome fills) convert veg progressively, NOT all at once. Suggested map: cuts 1-2 onion (half-cut then diced), 3 garlic, 4-5 greens, 6-7 tomato, 8 yellow chilli; each cut changes only that veg (whole → partly cut → diced pile, same colour). Reset restores whole veg. LEAF contract unchanged (Btn_StepChop x2 → "CHOP 1/8","CHOP 2/8"; Btn_FillPortion x3 → "PORTION DOME 100%").
-- Bowl (beside board) = prep bowl: after chopping, Transfer sweeps the diced veg board → bowl → into the saucier (existing TransferArcTube/PREP TRANSFERRED/DROP SHALLOTS strings stay).
-- Plate = final plating: when skillet + sauce + prep are done (plating convergence), salmon (seared, flipped) moves onto the plate, sauce is spooned over it, bowl garnish on top; PlatingDebriefCard shows "PLATED". Plate radius reduced.
-- Burner arcs (skillet + saucier): smaller radius, tighter gap between the arc dashes; keep thin broken style.
-- Pan handle and saucier handle: more realistic (tapered, riveted/loop-hole for pan, long steel handle with curve for saucier).
-- Spatula (fish turner): real physical prop with thin angled slotted blade + handle, proper size; animation: slides under the salmon, lifts, ROTATES the fillet 180° in a parabolic arc and lands it flipped (crust side changes), returns. Keeps SpatulaGuideRoot name; hologram arc may stay as subtle guide.
-- New **Auto Cook** button in the Director HUD (own AUTO chip): runs the whole flow automatically start→finish (chop 8 cuts → transfer to bowl/saucier → sear → flip → sauce → plate), then ends with the plated dish. Must stop cleanly on Reset; must not break existing Btn_* names/tests.
-- Then continue polishing one by one (see sub-tasks).
-**Sub-tasks:**
-- [x] P1 props & layout (done: arcs/plate/handles/progressive veg/bowl; 9/9 LEAF; uncommitted)
-- [x] P2 spatula prop + physical flip animation of the salmon (done: SpatulaFlipRig.ts, 3.3 s flip, golden underside, steam burst; 9/9 LEAF; uncommitted)
-- [x] P3 Auto Cook button + full automated sequence + plating + bowl transfer wiring (done: AutoCookController.ts, PlatingFinisher.ts, Btn_AutoCook, scenario 10; 10/10 LEAF; uncommitted)
-- [ ] P4 polish pass (only after user feedback): veg bits are small; "AUTO DISH READY" text; confirm live (non-LEAF) run by user in the preview; Pinch/Poke on HUD buttons is "obstructed by Collider" in preview (pre-existing, not investigated)
-- [ ] Update README storyboard (Auto Cook can replace manual key presses in the recording; key 7 = Auto Cook) and design brief
+### Asset batches (plug into `DishAssetBuilders.register`)
+- [ ] A4a [O/high] Hero vessels/tools: #302 wok/kadai, #303 biryani handi + domed lid (HandiDumLid), #332 gravy ladle (LadleProp), #342/#343 deep bowls
+- [ ] A4b [S/high] #305 stockpot + #306 strainer basket, #307 tawa, #322/#323 knives, #325/#326 bowl + ramekins, #333-#335 wok chuan/chopsticks/tongs, #336 whisk, #304 saucier variants
+- [ ] A5 [S/medium] #160-#166 spice trio, powders, butter/ghee pat, cheese, cream swirl, oil/glaze, dal/chickpeas
 
-### WS8 follow-ups (remaining visual gaps vs `devpost/reference/v4-target-render.webp`, seen in v5_after_*.png)
-- [ ] [O] Plate looks washed-out/translucent grey: give it a solid matte light-grey PBR with a visible rim
-- [ ] [O] Spatula guide callouts overlap the salmon ("CONF 0.94", "45 DEG ENTRY"): move labels off the fillet
-- [ ] [O] Long pill text ("CRUST OPTIMAL 0.94") shrinks too small: shorten text or widen the pill
-- [ ] [O] Diced veg still blocky: smaller, softer pieces; add real reflections/specular on saucier if feasible
-- [ ] Slab must stay mid-grey (dark surfaces render see-through on the additive display) – do NOT darken to the render's charcoal
-- [ ] GenerateTexture / GenerateFast3DAssets need Lens Studio login (not attempted); try only if the user logs in
-- [ ] [S] Re-run 9/9 LEAF + 0 TS errors + clean logs after any further restyle
+### Polish backlog (optional, by value for the video)
+- [ ] Dish 03 (noodles): saucier at the back shows a bright red sauce and noodles aren't clearly visible in the plated bowl; tofu cubes look dark/boxy; pill still says "SAUCE PLATED" – fix sauce colour per blueprint and nest visibility
+- [ ] Missing screenshots: dish 02 plated in the serving handi, dish 01 Auto Cook end state; dishes 04/05 only checked in probe runs – eyeball in preview
+- [ ] Manual play: steps can complete on their timers; add real completion where cheap
+- [ ] Original dish-01 veg meshes over the 400-tri budget (onion 440, garlic 576, tomato 576, chilli 508, herb 1580)
+- [ ] Banner cue line small; knife pose shift after Reset; duplicate-id warning for VisionConfig.ts
+- [ ] AR keyboard + ASR voice only testable on device / with SPECS 27 simulation render off
 
-### WS7 – live Anthropic vision verification (needs the user's key)
-- [ ] User puts `ANTHROPIC_API_KEY=` in repo-root `.env`, runs `powershell -File tools\sync-env.ps1`
-- [ ] [S] Enable `useLiveRapidRouter`, trigger AI Vision once, confirm the HTTPS call works from Lens Studio InternetModule (headers x-api-key / anthropic-version accepted, JSON parses, timeout works)
-- [ ] [S] Confirm refusal / error path degrades to UNSURE (0 confidence → ProposalGate rejects) without breaking the demo
-- [ ] Switch `useLiveRapidRouter` back OFF for the final recording (deterministic stand-in)
-
-### WS6 – Submission assets
-- [ ] Record 1080p/60 Preview video, trim to <3:00 (follow README "Recording checklist")
-- [ ] Devpost text: problem, wedge, tech (CLAD, Lens Studio MCP, plan-lens, LEAF 9/9)
-- [ ] Final review pass (correctness + policy reviewers)
-- [ ] Commit WS9 work when the user asks
-
-### Open issues / optional
-- [ ] Director HUD hover glow not verified (WS8 may change it)
-- [ ] LEAF panel lists 6 scenarios but 9 run by id (cosmetic)
-- [ ] (Optional) RamekinPourDetector.ts: drag ramekin → tilt → transfer ribbon (skipped earlier to protect tests)
-- [ ] (Optional) Scrub old RapidRouter key from git history (key already revoked by user; needs force-push to public repo – only if user asks)
+### Later / optional
+- [ ] User picks Claude models per job (fill `AiModelConfig.ts`) + key in `.env`; one live-call spike in preview
+- [ ] Record 1080p/60 video (<3:00), Devpost text, final review, commit/push when asked
+- [ ] Coach TTS; banner cue text still small; check duplicate-id warning for VisionConfig.ts; at 0.8 cm cuts the knife no longer reaches veg lanes
 
 ---
 
 ## In progress
 
-- [ ] [ME] Waiting for the user's decision on WS11 (real AI Vision: option 1 and/or 2, and network access for recording). WS10 is done and pushed; VisionConfig compiled and covered by the 10/10 run.
+- [ ] [ME] Waiting for the user: (1) commit + push checkpoint of ALL uncommitted work (everything since `5046b64`, ~100 files incl. textures/icons; secret scan first), (2) record video, (3) Devpost submit (deadline 2026-11-09 14:00 PST).
 
 ---
 
 ## Completed
+- [x] **T1 docs** (uncommitted): `README.md` rewritten (v5 flow, run instructions, keys incl. 2 fill portion / 0 reset / 8 cycle dishes, 2:50 storyboard, honest limits), `devpost/design-brief.md` + `Miseflow/devpost/design-brief.md` (identical, hash DB132AAD…161AB), `devpost/submission-draft.md` (Devpost text, honest about stand-ins). No `sk-` strings. Facts checked against code: 16 LEAF ids, key map, 9 kinematic ids, empty model config.
+- [x] **K1b Choreography** (0 TS errors, **16/16 LEAF** each run alone, "completed successfully" in the log; uncommitted): `KineRegistry.ts` (shared helpers + timeline with capped waits), `NoodleLiftToss.ts` (5.7 s tray / 7.3 s basket+tongs), `RiceDumLayer.ts` (dum layer 2.9 s, seal 5.3 s), `WhiskEmulsion.ts` (3.2 s), `PantryChoreographer.ts`; AutoCookController runs dishes 02-06 from steps[] (dish 01's 26-stage list untouched); PlatingFinisher variants: coupe (01, 04), #342 deep bowl nest + protein on top (03, 06), #343 serving handi rice dome + ladle pour (02, 05), steam + DISH_PLATED for all; per-dish pill wording ("STIR PLATED" etc., dish 01 unchanged); scenarios 15 `dish-biryani-cook`, 16 `dish-noodles-cook` (optional chip). Leftovers: no usable screenshot of dish 02 plated (the file shows post-Reset) and none of dish 01 end state; dishes 04/05 checked only in probe runs (all steps done, plated); in manual play steps can complete on their timers; sauce pool reads bright red in dish 03. Note: Lens Studio exited mid-run once; 14 and 16 were rerun.
+- [x] **K1a Step engine** (0 TS errors, **14/14 LEAF** each run alone, "completed successfully" in the log 14:03-14:11; uncommitted): `StepEngine.ts` (580 lines; `getSteps/getCurrentIndex/skipToNext/setEnabled/toggleCard`; boot/Reset dish 01 step 0; studio dish starts at reveal), step card objects `StepCard/StepCardTitle/StepCardBody/StepProgress` near each station pill, `Btn_StepGuide` "Steps" chip in AUTO group (default ON; dock scale 0.86→0.80; `STEP_GUIDE` registered in MiseFlowButtonTrigger), doneness: non-salmon proteins brown with sear progress (never go back), scenario 14 `step-engine`. Completion signals: chop=8th cut; portion=dome 100%; first sauce pour=bowl poured; later pours=DAG sauce COMPLETE; earlier sear/toss=sear<=10 s or flip start; last flip/toss=flipped; ladle/dum/whisk/noodle=request seen else step timer; plating=DISH_PLATED; each step visible >=0.8 s. Fixes: (a) plating moves the dish's own protein onto the active service piece, (b) knife one lane per cut + finer guide marks, (c) ramekins in one inward column, (d) loading chips READY only when asset exists / PLACED after reveal, (e) Reset always re-applies dish 01. Leftovers: skillet/sauce pills still say "SALMON PLATED"/"SAUCE SPOONED" for every dish (K1b must make per-dish wording); sauce/plating card position moved after its screenshot, not re-captured; dish 01 not compared to a pre-change screenshot.
+- [x] **A5 Spices/dairy/oils/legumes** (0 TS errors, 13/13 LEAF sequential; uncommitted): `PantryGenerators.ts` (2011 lines); `PantryController` via `builder.getPantry()` (`getPlan()`, `target("pan"|"pot"|"plate"|"starch")`, `getProp(n)`); #160 `GaramMasalaProp.dropInto(target,onDone)`, #161 `PowderProp.pinchInto/setPowder`, #162 `ButterProp.placeOn/setMelt/meltOver`, #163 `CheeseProp` same, #164 `CreamProp.swirlOnto/setProgress`, #165 `CruetProp.drizzle/drizzlePose/clearPool`, #166 `LegumeProp.setFill`; itemKeys `pantry_160..166` (renamed from spice_n); `IDishAssetBuilder.rebuildPantry(entries|null, ctx?)`; six `SLOT_PANTRY_*` slots; dishes list: 02 #160,#161; 03 #165; 04 #162; 05 #161,#162,#164; 06 #162,#165 (nothing lists #163/#166 – only on the contact sheet). Dish 01 diff 0.76% in animated saucier rim/steam. Leftovers: A4b ramekin at (11.9,10.6) is clipped at the slab edge in dish 02; oil sheen/powder tint read only at pan floor – K1 must pass a raised target for pots with sauce.
+- [x] **A4b Secondary tools** (0 TS errors, 13/13 LEAF sequential, each "Scenario <id> completed" in the log; uncommitted): `ToolGenerators.ts` (1092 lines): stockpot #305 (448 tris, water ripple + bubbles) + `StrainerBasket` (lower/liftOut(onDone)/getObject/holdStarch; holds #117/#118 starch when #306 enabled), tawa #307, chef knife/cleaver blade swaps (#322/#323; #321 restores), ramekins #326 x3 with powders, `ToolProp` (liftSwirl(target?,onDone), setHeld) for wok chuan #333 / chopsticks #334 / tongs #335, `WhiskProp.whiskEmulsion(onDone)` (also bound to WHISK_REQUESTED); HeroWareController handles #305 (showSecondary/getStock) and #307 (showPrimary); itemKeys vessel_305, vessel_307, vessel_326, tool_306, tool_333..tool_336; PAN_NAMES includes TawaPan; SLOT_TERTIARY_TOOL_REST moved to x -4, z 16.4. Dish 03: wok+saucier+chopsticks; dish 06: skillet+stockpot+basket+tongs+whisk; Reset restores originals. Leftovers: chuan/tawa tint tweaks not re-captured; knife variants only slightly different edge-on; ramekins only checked at the contact-sheet edge; Btn_Reset after HAND-applied extras (not via a dish) doesn't restore them (Reset after a dish does); stockpot water hides the sauce discs.
+- [x] **A4a Hero vessels/tools** (0 TS errors, 13/13 LEAF sequential; uncommitted): `VesselGenerators.ts` (wok body 440 tris + rim/long handle/kadai loops, handi 1216 + copper bands 648, lid+knob 1036 + dough seal 336, ladle 480, deep bowl 1544, serving handi+thali 1960); `HandiLid` (setSealed/lift/lower/isSealed/getActive; DUM_SEAL_REQUESTED drives it; lid lifts automatically when the transfer pour starts), `LadleProp.ladleToPlate(target?, onDone?)`, `HeroWareController` (swaps, keeps disabled `_Idle` prop), item keys `vessel_302`, `vessel_303`, `tool_332`, `serve_341/342/343`; builder `morphVessel/enableTool/stageWare/revealWare`, `setServicePiece/setPotInnerProfile`, `LadleOrbitalStir` now real (lifts lid, ladle handle outward, sauce ripple; scenario 12 PLAYED), `PlatingFinisher.getPlateObject()/getPlateRimRadius()`; ladle rest slot moved to x 8.8, z -3.1, yaw 8 (old spot was under the board). Dish 02: kadai+handi+ladle+serving handi; dish 03: wok+deep bowl; dish 06: skillet+deep bowl. Dish 01 boot diff 0.013; post-Reset diff 0.16% near knife (pre-existing knife shift, unchecked). Debug helper deleted.
+- [x] **A3 Proteins** (0 TS errors, **13/13 LEAF** confirmed by a separate sequential verification run; uncommitted): `ProteinGenerators.ts` (`buildProteinSet`, `ProteinProp` setDoneness/setFlipped/isFlipped/getPieces/placeInPan/resetToRaw/destroy, `ProteinRegistry.getActive()/getActiveTarget()` – none active = salmon), `SpatulaFlipRig/SpatulaTechniqueGuide/PanTossRoll` act on the active protein (salmon path unchanged), builder `SKILLET_FLOOR_Y/R` (l.595, registered l.1196), `rebuildProtein` hook l.3157 + stage()/reveal. Tris: ribeye 370, paneer steak 325, tofu steak 303, tikka 882, prawns 830, scallops 588, eggs 520, kofta 774, bacon 640, mushrooms 693, tofu cubes 882. Dishes 02-06 show their protein in the pan after reveal (screenshot checked). Leftovers for K1: plating still moves the hidden salmon; sear timer doesn't drive doneness yet; knife pose shift after Reset (pre-existing); LEAF plugin start latency 1.5-2 min.
+- [x] **A2 Starches** (0 TS errors, 13/13 LEAF sequential; uncommitted): `StarchGenerators.ts` (`buildStarchStages` raw/partial/finished + shared tray, `StarchProp` with `setStage(0|1|2,animate)`, `setStageProgress(0..2)`, `getObject/getStage/getItemKey/getTriCounts/placeAtRest/destroy`), textures `Tex_RiceGrain.png`, `Tex_FlatbreadChar.png`, `IDishAssetBuilder.rebuildStarch(entry|null, stage?, tint?)` (+`StarchTint`), `SLOT_STARCH` at StationsRoot (8.6,-0.22,5.4) r2.5 between plate and prep bowl, builder `stage()/reveal("starch_n")` + `getStarchProps()`, RecipeCompilerService runBuilderHooks/Reset. Tris: rice 352/432/484, noodles 460/420/468, spaghetti 432/480/484, penne 360/336/352, dough 266/240/480. Dishes 02 (rice), 03 (noodles), 06 (pasta) spawn their starch at reveal; Reset removes it. Note: knife pose after Reset is slightly shifted vs boot (also happens via dish 04 control run – pre-existing, not A2). Stages are not yet driven by steps (K1).
+- [x] **A1 Vegetables** (0 TS errors, 13/13 LEAF run sequentially; uncommitted): `VegGenerators.ts` (`VEG_GENERATOR_TABLE`, 23 generators across 5 archetypes incl. potato #119 and paneer/tofu/bread/peas variants, `buildVegStages` Whole/Partial/Cut), StationPropsBuilder MeshAcc `toMesh/bounds/scaleShift/triCount`, dish builder `rebuildVegSlot/isBootVeg/prebuildVeg/stage`; dish 01 pixel diff 0.0; dish 02/03 lanes + 8 cuts verified; new items <=400 tris whole / <=900 cut, original #101-#105 + herb kept 1:1 (onion 440, garlic 576, tomato 576, chilli 508, herb 1580). Screenshots predate the last scallion-ring edit. Gap: at 0.8 cm cut spacing the knife doesn't reach the veg lanes (fix in K1/T1).
+- [x] **P5 Dish Studio** (0 TS errors, 13/13 LEAF per agent; uncommitted): `DishStudio.ts` (hide setup by saving StationsRoot scale and setting 0.0001 – nothing disabled/reset; Back restores exactly), `DishRevealDirector.ts` (one-by-one reveal + animated DishLoadingPanel), `StudioCardKit.ts` (near-square cards), `SpatialBriefingDeck.ts` rewritten as one-card deck (< > Skip, last card Let's cook = `Btn_LetsCook`), Speak/Keyboard cards + 6 dish chips (`Btn_StudioChip_n`), Heard card with Edit (speech only), Typed card, not-found card, `STUDIO_TEXT_SUBMITTED {text,source}` bus path for LEAF, optional `stage/reveal` hooks in `IDishAssetBuilder`, scenario 13 `dish-studio-flow`, tests 11/12 adapted. Notes: AR keyboard + voice only show a notice in Preview; `Materials/ImageMaterial.mat` had no passes and crashed icons after a Lens Studio restart – rebuilt from ImageMaterialPreset; Scene.scene rewritten only by a new LEAF Plugin Bridge id. KNOWN GAP: the loading panel says "READY/PLACED" per item although new meshes do not exist yet (placeholder until A1-A5) – make the panel truthful once real items exist.
+- [x] **D1 Data expansion** (0 TS errors, 12/12 LEAF per agent; uncommitted): `UniversalDishSchema` (StarchArchetype, PantryArchetype, 9 KinematicIds, StepSpec/steps[], found/notFoundMessage), `DishLibraryConfig` 6 dishes (03 noodles uses tofu #147; 02 mushrooms #142), `AssetPageTable` full catalogue + aliases (#110→#140, #111→#141, #112→#146, #113→#147, #114→#144, #115→#142, #311→#304; presets use #325 for the prep bowl since #323 = cleaver), `autoServewareFor(bp)`, `ProposalGate.isNotFound/notFoundText`, `getCatalogEntry`, DISH_NOT_FOUND on any live-compile failure, new events (NOODLE_TOSS/DUM_SEAL/WHISK_REQUESTED, DISH_NOT_FOUND, DISH_LOAD_STAGED, DISH_REVEALED, DISH_ITEM_READY, STEP_STARTED/COMPLETED – defined only, not emitted yet). Status line now "PAGE TABLE: 8/8 INGREDIENTS HIT • 7/7 VESSELS & ACCESSORIES LOADED" (may overflow old capsule).
 
-### Setup
-- [x] [ME] Located audit in Drive (new account taylankaraca78) and read it
-- [x] [ME] Explored project; plan written and approved; todo.md created
-
-### WS0 + WS1 – Baseline, camera, geometry
-- [x] Baseline: 0 TS errors, 6/6 LEAF, screenshot
-- [x] Levitating saucier fixed (saucier rear-centre, plate front-centre), skillet wireframe/box artifact removed, stray cube removed, knife lifted
-- [x] Salmon raised + recoloured + Maillard bars; laser cut lines emissive cyan; slab enlarged with light rim; additive-display-friendly materials
-- [x] Preview camera pose chosen (see handover)
-
-### WS2 – Diegetic DAG layer
-- [x] `DAGCounterConduit.ts`: Conduit_PrepToSauce (cyan → amber on DRIFT_RECORDED → emerald on transfer) + Conduit_Convergence to plate; conduit rerouted/wider; [LOCKED] label fixed
-- [x] `DiegeticChronoRing.ts`: skillet 24-tick ring + INVARIANT tick + Heat Guard; saucier start-arc + ghost arc on drift
-- [x] Amber/emerald/drift states verified in screenshots
-
-### WS3 – Progressive-disclosure UI
-- [x] Station cards → 2-line pills above own cookware; idle collapse, alerted expand ~5s
-- [x] Compact grouped Director HUD (COOK | SIM) with coloured borders; chronometer pill (06:40 → 07:05 on drift)
-
-### WS4 – Hero features
-- [x] `GazeEdgeBeacon.ts` (>20° show, <15° hide)
-- [x] `SpatulaTechniqueGuide.ts` (≤10s or OPTIMAL crust; 45° entry / gentle roll)
-- [x] `AI/VisionScanStandIn.ts`: EXTEND_SEAR 0.89 / OPTIMAL_CRUST 0.94 / STEAM_OCCLUDED 0.41 rejected by ProposalGate floor 0.55; local, <2 ms
-- [x] Live RapidRouter call off by default (`useLiveRapidRouter=false`)
-
-### WS5 – LEAF 6 → 9
-- [x] Scenarios gaze-wayfinding-beacon, proposal-gate-rejection, spatula-flip-guide registered in LeafIndex.ts; 9/9 pass, 0 TS errors, clean logs
-
-### WS6 (partial) – docs
-- [x] README upgrade log + 2:50 recording checklist + testing notes
-- [x] `devpost/design-brief.md` rewritten to v4 (both copies identical)
-- [x] v4 work committed as `00fdcf2`
-
-### WS9 – realism + full flow (done, uncommitted; 10/10 LEAF, 0 TS errors)
-- [x] P1: burner arcs tight, plate -25%, pan + saucier handles, progressive veg (cuts 1-2 onion, 3 garlic, 4-5 parsley, 6-7 tomato, 8 chilli; whole → partial → diced), prep bowl (empty until Transfer; VolumetricPortionDome hidden until Fill Portion)
-- [x] P2: `SpatulaFlipRig.ts` slotted fish-turner prop (`SpatulaProp`), 3.3 s physical flip of the salmon (golden crust underside), steam burst, events SALMON_FLIP_STARTED/SALMON_FLIPPED, `SpatulaTechniqueGuide.playFlip(onDone)`
-- [x] P3: `AutoCookController.ts` (Btn_AutoCook / key 7 / Stop; ~64-68 s at speed 1: start 2s, 8 chops x1.4s, portion, prep ready, board→bowl→saucier, sear 14s, 10x warp, flip 3.3s, sauce, plating ~6s, dish ready), `PlatingFinisher.ts` (salmon onto plate crust-up, sauce pour, parsley garnish, "DISH READY"), skillet pill FLIPPED/CRUST DONE, scenario 10 `auto-cook-full-flow` (speed param, default 8)
-
-### WS8 – Visual restyle v5 (done, committed 4dbadbf; 9/9 LEAF, 0 TS errors)
-- [x] 6 generated albedo textures in `Assets/Textures/` (brushed slab, end-grain wood, salmon crust, sauce, cast iron, steam) + 5 icons in `Assets/Icons/` + `Assets/Materials/ImageMaterial.mat`
-- [x] `StationPropsBuilder.ts`: textured PBR (`makeTexturedPbr`), bevelled slab, thin broken amber/cyan burner arcs, matte plate, end-grain board with diced veg, black knife handle, salmon fillet + rosemary + steam, sauce with herbs
-- [x] `DiegeticChronoRing.ts` thin arc dashes; `DAGCounterConduit.ts` hairline lines + [LOCKED] lock capsule with leader
-- [x] `MiseFlowSpatialUI.ts`: capsule pills with icon, white label + accent value, leader lines; PLATE IN cloche pill; Director dock with COOK/SIM chips + outlined buttons
-- [x] Before/after screenshots in the session scratchpad (v5_before_idle / v5_after_idle / v5_after_drift / v5_after_vision_optimal)
-
-### WS7 – Anthropic vision (code written, live call not yet tested)
-- [x] API key leak: user revoked old RapidRouter key; key removed from source (history still contains it, now harmless)
-- [x] `RapidRouterVisionService.ts` switched to Anthropic Messages API: model `claude-sonnet-5-5`, `output_config.effort: "medium"`, JSON-schema structured output, no temperature/thinking/prefill, refusal/parse failure → UNSURE; class + public method names unchanged
-- [x] Key plumbing: `tools/sync-env.ps1`, ignored `LocalSecrets.ts` (+ committed `LocalSecrets.example.ts`), `.env.example`, `.gitignore` entries verified with `git check-ignore`
-- [x] Compiles with 0 errors
+- [x] [ME] Read both v5 docs + pasted catalogue; planned phases; replaced old todo; Anthropic-only and Prebuilt-Cookings rules recorded
+- [x] **v4 baseline (committed, pushed `1ef5283`)**: camera/layout, diegetic conduits/rings, pills + Director HUD, gaze beacon, spatula flip, progressive chop, two-pour transfer, steam windows, Auto Cook + plating, Anthropic vision service, VisionConfig
+- [x] **P1 Foundation & AI brain** (0 TS errors, 10/10 LEAF; uncommitted): tracked empty `LocalSecrets.ts` + `sync-env.ps1` skip-worktree, `AiModelConfig.ts` placeholders, event bus (7 dish events), `UniversalDishSchema.ts`, `DishLibraryConfig.ts` (PREBUILT_COOKINGS, salmon first), `ProposalGate.validateDishBlueprint`, `RecipeCompilerService.ts` (live path off while model empty). Salmon values: prep 45 s / sear 60 s / sauce 50 s.
+- [x] **P2 Page tables & slot allocator** (10/10 LEAF; uncommitted): `AssetPageTable.ts` (batchLoad via Promise.all, #200+ page faults, parametric fallback), `SpatialSlotAllocator.ts`, `IDishAssetBuilder.ts` + `DishAssetBuilders.register/get`. Notes: presets report 6 hits (5 veg + protein); plan coords are station-local with scale 0.68/0.74.
+- [x] **P3 Briefing Deck & HUD** (10/10 LEAF; uncommitted): `SpatialBriefingDeck.ts` (< > Skip, spotlight ring, real DMA status line), `VoiceSousChefController.ts` shell, `Btn_CycleDish` (Key 8), `ChefVoiceBannerUI`, `MiseFlowButtonTrigger.registerAction`. Deck slot (0,0.45,10.92); dock scale 0.86.
+- [x] **P4 DAG blueprint apply + kinematic shells + LEAF 11/12** (12/12 LEAF per agent; uncommitted): `ChoreographyDAG.applyDishBlueprint`, `DishBlueprintApplier.ts`, `StationPropsDishBuilder` (cut grid, sauce colours, protein tint, pill verbs), `PanTossRoll.ts`, `LadleOrbitalStir.ts` (no-op until LadleProp exists), scenarios 11 + 12.

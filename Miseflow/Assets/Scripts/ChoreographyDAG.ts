@@ -26,6 +26,42 @@ export interface RecipeTask {
   interruptionPolicy: InterruptionPolicy;
 }
 
+/** Titles/instructions of the four fixed task keys (v5: per-dish copy, same keys). */
+interface TaskLabels {
+  prepTitle: string;
+  prepInstruction: string;
+  searTitle: string;
+  searInstruction: string;
+  sauceTitle: string;
+  sauceInstruction: string;
+  plateTitle: string;
+  plateInstruction: string;
+}
+
+const DEFAULT_DISH_ID = "01_salmon_beurre_blanc";
+
+/** Dish 01 copy: exactly the pre-v5 strings. */
+const DISH01_LABELS: TaskLabels = {
+  prepTitle: "Chop Shallots & Asparagus",
+  prepInstruction: "Slice shallots at 1.5cm guide intervals",
+  searTitle: "Sear Salmon (Skin Side)",
+  searInstruction: "Crisp skin over medium-high heat (invariant duration)",
+  sauceTitle: "Shallot-Lemon Reduction",
+  sauceInstruction: "Add chopped shallots; reduce on low heat",
+  plateTitle: "Plate & Garnish",
+  plateInstruction: "Spoon reduction over crispy salmon; plate asparagus",
+};
+
+function clampDur(v: any, fallback: number): number {
+  return typeof v === "number" && isFinite(v) && v > 0 ? v : fallback;
+}
+
+function cardText(bp: any, i: number, key: string, fallback: string): string {
+  const c = bp && bp.cookbookCards ? bp.cookbookCards[i] : null;
+  const v = c ? c[key] : null;
+  return typeof v === "string" && v.length > 0 ? v : fallback;
+}
+
 @component
 export class ChoreographyDAG extends BaseScriptComponent {
   @input
@@ -49,7 +85,13 @@ export class ChoreographyDAG extends BaseScriptComponent {
 
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
 
+  // v5: task copy (dish 01 strings are the LEAF/visual baseline) + boot durations captured on awake
+  private labels: TaskLabels = { ...DISH01_LABELS };
+  private bootDurations: { prep: number; sear: number; sauce: number } = { prep: 45, sear: 60, sauce: 50 };
+  private activeDishId: string = DEFAULT_DISH_ID;
+
   onAwake(): void {
+    this.bootDurations = { prep: this.prepDurationSeconds, sear: this.skilletDurationSeconds, sauce: this.saucepotDurationSeconds };
     this.initRecipeGraph();
 
     this.createEvent("OnStartEvent").bind(() => {
@@ -68,8 +110,8 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.tasks.set("prep_shallots", {
       id: "prep_shallots",
       stationId: "PREP",
-      title: "Chop Shallots & Asparagus",
-      instruction: "Slice shallots at 1.5cm guide intervals",
+      title: this.labels.prepTitle,
+      instruction: this.labels.prepInstruction,
       dependencies: [],
       plannedDurationSeconds: this.prepDurationSeconds,
       remainingDurationSeconds: this.prepDurationSeconds,
@@ -81,8 +123,8 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.tasks.set("skillet_sear_skin", {
       id: "skillet_sear_skin",
       stationId: "SKILLET",
-      title: "Sear Salmon (Skin Side)",
-      instruction: "Crisp skin over medium-high heat (invariant duration)",
+      title: this.labels.searTitle,
+      instruction: this.labels.searInstruction,
       dependencies: [],
       plannedDurationSeconds: this.skilletDurationSeconds,
       remainingDurationSeconds: this.skilletDurationSeconds,
@@ -94,8 +136,8 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.tasks.set("sauce_reduction", {
       id: "sauce_reduction",
       stationId: "SAUCEPOT",
-      title: "Shallot-Lemon Reduction",
-      instruction: "Add chopped shallots; reduce on low heat",
+      title: this.labels.sauceTitle,
+      instruction: this.labels.sauceInstruction,
       dependencies: ["prep_shallots"],
       plannedDurationSeconds: this.saucepotDurationSeconds,
       remainingDurationSeconds: this.saucepotDurationSeconds,
@@ -107,8 +149,8 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.tasks.set("plating_garnish", {
       id: "plating_garnish",
       stationId: "PLATING",
-      title: "Plate & Garnish",
-      instruction: "Spoon reduction over crispy salmon; plate asparagus",
+      title: this.labels.plateTitle,
+      instruction: this.labels.plateInstruction,
       dependencies: ["skillet_sear_skin", "sauce_reduction"],
       plannedDurationSeconds: 20.0,
       remainingDurationSeconds: 20.0,
@@ -348,6 +390,73 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.latestExplanation = "";
     this.initRecipeGraph();
     print("[ScheduleEngine] Reset complete: tasks restored to initial state.");
+  }
+
+  /**
+   * v5: re-time and re-title the four fixed tasks (prep_shallots, skillet_sear_skin, sauce_reduction,
+   * plating_garnish) for a compiled dish. Dish 01 restores the boot durations and the original copy
+   * exactly. While a cook is under way only the copy changes; durations apply from the next reset.
+   */
+  public applyDishBlueprint(bp: any): void {
+    if (!bp) return;
+    const isDefault = bp.dishId === DEFAULT_DISH_ID;
+    this.activeDishId = typeof bp.dishId === "string" ? bp.dishId : DEFAULT_DISH_ID;
+    if (isDefault) {
+      this.prepDurationSeconds = this.bootDurations.prep;
+      this.skilletDurationSeconds = this.bootDurations.sear;
+      this.saucepotDurationSeconds = this.bootDurations.sauce;
+      this.labels = { ...DISH01_LABELS };
+    } else {
+      this.prepDurationSeconds = clampDur(bp.prepDurationSec, this.bootDurations.prep);
+      this.skilletDurationSeconds = clampDur(bp.searDurationSec, this.bootDurations.sear);
+      this.saucepotDurationSeconds = clampDur(bp.sauceDurationSec, this.bootDurations.sauce);
+      const protein = bp.protein && bp.protein.name ? String(bp.protein.name) : "Protein";
+      const sauce = bp.sauce && bp.sauce.name ? String(bp.sauce.name) : "Sauce";
+      const verb = typeof bp.skilletPillVerb === "string" && bp.skilletPillVerb.length > 0 ? bp.skilletPillVerb : "SEAR";
+      this.labels = {
+        prepTitle: cardText(bp, 0, "headline", `Prep (${bp.cutLabel || "guide"})`),
+        prepInstruction: cardText(bp, 0, "instruction", DISH01_LABELS.prepInstruction),
+        searTitle: `${verb} ${protein}`,
+        searInstruction: cardText(bp, 1, "instruction", DISH01_LABELS.searInstruction),
+        sauceTitle: sauce,
+        sauceInstruction: cardText(bp, 2, "instruction", DISH01_LABELS.sauceInstruction),
+        plateTitle: cardText(bp, 3, "headline", DISH01_LABELS.plateTitle),
+        plateInstruction: cardText(bp, 3, "instruction", DISH01_LABELS.plateInstruction),
+      };
+    }
+    const prep = this.tasks.get("prep_shallots");
+    const idle = !this.isRunning && !this.hasConverged && !!prep && prep.state === "READY" && this.driftDelaySeconds === 0;
+    if (idle) {
+      this.initRecipeGraph();
+    } else {
+      // keep timers/states of the cook in progress; refresh the copy only
+      const set = (id: string, title: string, instruction: string) => {
+        const t = this.tasks.get(id);
+        if (t) {
+          t.title = title;
+          t.instruction = instruction;
+        }
+      };
+      set("prep_shallots", this.labels.prepTitle, this.labels.prepInstruction);
+      set("skillet_sear_skin", this.labels.searTitle, this.labels.searInstruction);
+      set("sauce_reduction", this.labels.sauceTitle, this.labels.sauceInstruction);
+      set("plating_garnish", this.labels.plateTitle, this.labels.plateInstruction);
+    }
+    print(`[ScheduleEngine] Dish ${this.activeDishId}: prep ${this.prepDurationSeconds}s / sear ${this.skilletDurationSeconds}s / sauce ${this.saucepotDurationSeconds}s${idle ? "" : " (timers kept; applies on reset)"}`);
+  }
+
+  public getActiveDishId(): string {
+    return this.activeDishId;
+  }
+
+  public getTaskTitle(taskId: string): string {
+    const t = this.tasks.get(taskId);
+    return t ? t.title : "";
+  }
+
+  public getPlannedDuration(taskId: string): number {
+    const t = this.tasks.get(taskId);
+    return t ? t.plannedDurationSeconds : 0;
   }
 
   // --- Backward-Compatible Getters for UI & LEAF Tests ---
