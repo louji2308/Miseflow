@@ -17,7 +17,7 @@ import { MiseFlowEventBus, MiseFlowEventType } from "../MiseFlowEventBus";
 import { CookStep, HEAT_LEVELS } from "./CookPlanSchema";
 import { CookEvents, CookWorld, EquipmentHandle, HeatLevel, ItemHandle, ToolHandle } from "./CookWorld";
 import { ItemState } from "./ItemState";
-import { CookActionContext, CookSignal, CookTweener, isCancel, toolSnapHome, alive } from "./Actions/CookActionKit";
+import { CookActionContext, CookSignal, CookTweener, isCancel, toolSnapHome, alive, setToolAim } from "./Actions/CookActionKit";
 import { CookActionRegistry, DEFAULT_DURATION } from "./Actions/CookActionRegistry";
 
 export const CookRuntimeEvents = {
@@ -304,6 +304,7 @@ export class CookRuntime extends BaseScriptComponent {
     const its = (Array.isArray(s.ingredientIds) ? s.ingredientIds : []).map((id) => w.items[id]).filter((it) => !!it);
     // items the stage staged hidden (e.g. dough produced from flour) appear when a step first uses them
     this.showItems(its);
+    if (tool && eq) setToolAim(tool, eq.floorWorld()); // handle points away from the vessel, toward where the tool lies
     const sig: CookSignal = { cancelled: false };
     let fxRoot: SceneObject | null = null;
     try {

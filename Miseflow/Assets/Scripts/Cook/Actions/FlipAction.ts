@@ -8,6 +8,7 @@ import {
 } from "./CookActionKit";
 import { worldAabb } from "../../KineRegistry";
 import { flatPiece } from "./CookFlatAction";
+import { flipInVessel, isFlatPiece } from "./FlatFryKit";
 
 export const FlipAction: CookAction = {
   name: "FLIP",
@@ -25,6 +26,11 @@ export const FlipAction: CookAction = {
     const each = D / Math.max(1, targets.length);
     for (const p of targets) {
       if (!alive(p)) continue;
+      // flat food (poori, chapathi, dosa) turns over INSIDE the vessel, at the oil surface or the pan floor
+      if (isFlatPiece(p)) {
+        await flipInVessel(ctx, tool, eq, p, each);
+        continue;
+      }
       const p0 = wpos(p);
       const r0 = wrot(p);
       const b = worldAabb(p);

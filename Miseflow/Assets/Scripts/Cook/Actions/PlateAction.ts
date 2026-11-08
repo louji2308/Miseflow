@@ -50,6 +50,12 @@ export const PlateAction: CookAction = {
       objs.push(pieces[i]);
       dest.push(new vec3(spots[i].x, y + bottomOffset(pieces[i]) + 0.05 + (1 - r / R) * 0.9 * Math.min(1, pieces.length / 8), spots[i].z));
     }
+    // food a fry step already carried onto the plate stays exactly where it was set down
+    const pf = plate.floorWorld();
+    for (let i = 0; i < objs.length; i++) {
+      const c = wpos(objs[i]);
+      if (Math.sqrt((c.x - pf.x) ** 2 + (c.z - pf.z) ** 2) < plate.radiusCm * 0.95 && c.y > pf.y - 0.5 && c.y < pf.y + 12) dest[i] = c;
+    }
     const from = objs.map((o) => wpos(o));
     const n = objs.length;
     const hop = Math.max(0.5, Math.min(1.2, D * 0.35));

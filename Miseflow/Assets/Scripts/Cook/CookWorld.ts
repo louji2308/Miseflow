@@ -48,6 +48,8 @@ export interface EquipmentHandle {
   setSteam(amount01: number): void;
   /** liquid / content fill 0..1 with an RGB tint (batter, sauce, water) */
   setFill(level01: number, color: vec3): void;
+  /** current oil depth 0..1 (0 = no oil) */
+  oilLevel?(): number;
 }
 
 export interface ToolHandle {

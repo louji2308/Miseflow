@@ -7,6 +7,8 @@ import {
   levelY, placeTip, setWpos, setWrot, smooth, tipWorld, toolHome, toolTilt, toolTo, v3, wpos, wrot, DEG, SOLID_ROLES,
 } from "./CookActionKit";
 import { OIL_LEVEL } from "./HeatOilAction";
+import { clampToBench } from "./CookActionKit";
+import { deepFryFlat, flatFryTargets, isFlatPiece } from "./FlatFryKit";
 
 export const DeepFryAction: CookAction = {
   name: "DEEP_FRY",
@@ -18,6 +20,12 @@ export const DeepFryAction: CookAction = {
     if (food.length === 0) food = ctx.items.slice();
     const pieces = allPieces(food);
     const n = pieces.length;
+    // flat food (poori, fritter discs): one disc at a time, floating, flipped inside the oil, lifted straight onto the plate
+    const flatTargets = flatFryTargets(food);
+    if (flatTargets.length > 0 && flatTargets.every((p) => isFlatPiece(p))) {
+      await deepFryFlat(ctx, eq, tool, food, flatTargets);
+      return;
+    }
     const batches = Math.max(1, Math.min(n, ctx.count(2, 4)));
     const per = Math.ceil(n / batches);
     eq.setHeat(heatOf(ctx.step, "HIGH") === "OFF" ? "HIGH" : heatOf(ctx.step, "HIGH"));
@@ -93,7 +101,8 @@ export const DeepFryAction: CookAction = {
       const under = new vec3(c.x, surf - 0.4, c.z);
       const restAt = group.map((_p, i) => {
         const s = ctx.to ? discSpots(ctx.to.floorWorld(), ctx.to.radiusCm * 0.5, n, ctx.to.floorWorld().y)[rested + i] : besideSpot(eq, rested + i, n, side);
-        return new vec3(s.x, s.y + bottomOffset(group[i]) + 0.05, s.z);
+        const c2 = clampToBench(ctx.world, new vec3(s.x, s.y, s.z), 1.0); // never set down over the table edge
+        return new vec3(c2.x, s.y + bottomOffset(group[i]) + 0.05, c2.z);
       });
       const off = group.map((_p, i) => inOil[i].sub(under));
       if (tool) {

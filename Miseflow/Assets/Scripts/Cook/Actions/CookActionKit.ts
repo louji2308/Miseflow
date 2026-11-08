@@ -18,6 +18,7 @@
  */
 
 import { CookStep } from "../CookPlanSchema";
+import { BENCH } from "../CookLayout";
 import { CookWorld, EquipmentHandle, HeatLevel, ItemHandle, ToolHandle } from "../CookWorld";
 import { ItemState, ItemStateKey, liftRgb, mixRgb } from "../ItemState";
 import { worldAabb } from "../../KineRegistry";
@@ -510,8 +511,30 @@ export function tipSign(tool: ToolHandle): number {
 export function toolTilt(tool: ToolHandle, pitchDeg: number, yawDeg: number = 0): quat {
   const ax = toolAxis(tool);
   const side = horiz(vec3.up().cross(ax));
-  const q = quat.angleAxis(yawDeg * DEG, vec3.up()).multiply(quat.angleAxis(pitchDeg * tipSign(tool) * DEG, side));
+  const q = quat.angleAxis((yawDeg + aimYawDeg(tool, ax)) * DEG, vec3.up()).multiply(quat.angleAxis(pitchDeg * tipSign(tool) * DEG, side));
   return q.multiply(tool.restRot);
+}
+
+/** The vessel a tool currently works over (set by CookRuntime when a step starts); the handle then points away from it. */
+export function setToolAim(tool: ToolHandle | null, vesselCentre: vec3 | null): void {
+  if (!tool) return;
+  (tool as any).__aim = vesselCentre;
+}
+
+/**
+ * Extra yaw (degrees) that turns the handle from its lying direction to the direction "from the vessel toward where the tool
+ * rests" - a cook holds a spoon or spatula with the handle toward their side, not in whatever direction it was laid down.
+ */
+function aimYawDeg(tool: ToolHandle, axis: vec3): number {
+  const aim: vec3 | undefined = (tool as any).__aim;
+  if (!aim) return 0;
+  const away = new vec3(tool.restPos.x - aim.x, 0, tool.restPos.z - aim.z);
+  if (away.x * away.x + away.z * away.z < 1.0) return 0;
+  const want = horiz(away);
+  const h = axis.uniformScale(-tipSign(tool)); // handle direction (tip at +X => handle toward -X)
+  const cy = h.z * want.x - h.x * want.z; // y component of h x want (positive = counter-clockwise seen from above, same as angleAxis about +Y)
+  const dt = h.x * want.x + h.z * want.z;
+  return Math.atan2(cy, dt) / DEG;
 }
 
 /** The tool tip traces `turns` circles of radius r over the vessel floor (stir / generic). */
@@ -523,11 +546,37 @@ export async function toolCircles(ctx: CookActionContext, tool: ToolHandle | nul
   const rot = toolTilt(tool, pitchDeg);
   const start = new vec3(center.x + r, center.y + dip, center.z);
   await toolTo(ctx, tool, start, rot, Math.min(0.6, sec * 0.2), 3);
+  // the tip circles the vessel while the hand stays on one side: the handle only swings a little and the pitch breathes
+  const swing = Math.min(28, 6 + r * 4);
   await ctx.tween(sec, (k) => {
     const a = turns * Math.PI * 2 * k;
-    const yaw = quat.angleAxis(a, vec3.up());
-    placeTip(tool, new vec3(center.x + Math.cos(a) * r, center.y + dip + Math.sin(a * 2) * 0.2, center.z - Math.sin(a) * r), yaw.multiply(rot));
+    const sw = quat.angleAxis(Math.sin(a) * swing * DEG, vec3.up());
+    const pitch = toolTilt(tool, pitchDeg + Math.sin(a * 2) * 5);
+    placeTip(tool, new vec3(center.x + Math.cos(a) * r, center.y + dip + Math.sin(a * 2) * 0.2, center.z - Math.sin(a) * r), sw.multiply(pitch));
   });
+}
+
+/** Surface height food floats at / is set down on inside a vessel (oil surface when it holds oil, else the floor). */
+export function surfaceY(eq: EquipmentHandle): number {
+  const l = eq.oilLevel ? eq.oilLevel() : 0;
+  return l > 0.02 ? levelY(eq, l) : eq.floorWorld().y;
+}
+
+/** Horizontal distance from the vessel axis. */
+export function distFromAxis(eq: EquipmentHandle, p: vec3): number {
+  const f = eq.floorWorld();
+  return Math.sqrt((p.x - f.x) ** 2 + (p.z - f.z) ** 2);
+}
+
+/** Keeps a world point on the bench slab (with a margin) so nothing is ever set down over the table edge. */
+export function clampToBench(world: CookWorld, p: vec3, margin: number = 1.4): vec3 {
+  const root = world.root;
+  if (!alive(root)) return p;
+  const tr = root.getTransform();
+  const l = tr.getInvertedWorldTransform().multiplyPoint(p);
+  const x = Math.max(BENCH.minX + margin, Math.min(BENCH.maxX - margin, l.x));
+  const z = Math.max(BENCH.minZ + margin, Math.min(BENCH.maxZ - margin, l.z));
+  return tr.getWorldTransform().multiplyPoint(new vec3(x, l.y, z));
 }
 
 // ───────────────────────────── FX blobs ─────────────────────────────

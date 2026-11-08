@@ -7,9 +7,28 @@ import {
   v3, wpos,
 } from "./CookActionKit";
 import { ItemHandle } from "../CookWorld";
+import { worldAabb } from "../../KineRegistry";
 
 export const ROLL_DISC_SCALE = 2.6;
 export const ROLL_THICKNESS = 0.22;
+
+/** Disc growth factor so the rolled disc fits the vessel the dough is cooked in next (tawa 84 % of the radius, oil 42 %). */
+function discScaleFor(ctx: CookActionContext, dough: ItemHandle, ballR: number): number {
+  const steps = ctx.world.plan && ctx.world.plan.steps ? ctx.world.plan.steps : [];
+  let i0 = -1;
+  for (let i = 0; i < steps.length; i++) if (steps[i].id === ctx.step.id) i0 = i;
+  for (let i = i0 + 1; i0 >= 0 && i < steps.length; i++) {
+    const s = steps[i];
+    if ((s.ingredientIds || []).indexOf(dough.id) < 0) continue;
+    const a = String(s.action).toUpperCase();
+    if (a !== "COOK_FLAT" && a !== "DEEP_FRY" && a !== "SHALLOW_FRY") continue;
+    const eq = ctx.world.equipment[s.equipmentId];
+    if (!eq) break;
+    const want = eq.radiusCm * (a === "COOK_FLAT" ? 0.84 : 0.42);
+    return Math.max(1.3, Math.min(ROLL_DISC_SCALE, want / Math.max(0.3, ballR)));
+  }
+  return ROLL_DISC_SCALE;
+}
 
 export const RollDoughAction: CookAction = {
   name: "ROLL_DOUGH",
@@ -41,6 +60,10 @@ export const RollDoughAction: CookAction = {
     const centre = new vec3(f.x, f.y + bo, f.z);
     await ctx.tween(Math.max(0.5, D * 0.12), (k) => setWpos(target, arcPoint(p0, centre, 3, smooth(k))));
     void fxBurst(ctx, f.add(v3(0, 0.3, 0)), 10, FX.FLOUR, 1.2, eq.radiusCm * 0.5, 0.8, 0.12).catch(() => {});
+    // the rolled disc is sized for the vessel it goes into next (a poori must fit the oil, a chapathi the tawa)
+    const bb = worldAabb(target);
+    const ballR = bb ? Math.max(bb.mx.x - bb.mn.x, bb.mx.z - bb.mn.z) / 2 : 1.5;
+    const discScale = discScaleFor(ctx, dough, ballR);
     const strokes = ctx.count(6, 14);
     const axis = tool ? toolAxis(tool) : v3(1, 0, 0);
     const travel0 = horiz(v3(0, 1, 0).cross(axis));
@@ -59,7 +82,7 @@ export const RollDoughAction: CookAction = {
       const dir = yq.multiplyVec3(travel0);
       const sweep = Math.sin((u - 0.5) * Math.PI) * (s % 2 === 0 ? 1 : -1); // there and back
       const grow = smooth(k);
-      const xz = 1 + (ROLL_DISC_SCALE - 1) * grow;
+      const xz = 1 + (discScale - 1) * grow;
       const y = 1 + (ROLL_THICKNESS - 1) * grow;
       setS(xz, y);
       setWpos(target, new vec3(f.x, f.y + bo * y, f.z));
@@ -72,7 +95,7 @@ export const RollDoughAction: CookAction = {
         placeTip(tool, new vec3(f.x, topAt(y), f.z).add(dir.uniformScale(along)), rot);
       }
     });
-    setS(ROLL_DISC_SCALE, ROLL_THICKNESS);
+    setS(discScale, ROLL_THICKNESS);
     setWpos(target, new vec3(f.x, f.y + bo * ROLL_THICKNESS, f.z));
     await toolHome(ctx, tool, 0.6);
   },

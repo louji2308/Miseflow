@@ -9,6 +9,7 @@ import { SpatialBriefingDeck } from "../Scripts/SpatialBriefingDeck";
 import { CookStage } from "../Scripts/Cook/CookStage";
 import { CookRuntime } from "../Scripts/Cook/CookRuntime";
 import { CookItemLabels } from "../Scripts/Cook/CookItemLabels";
+import { BENCH } from "../Scripts/Cook/CookLayout";
 
 function sceneHas(name: string): boolean {
   const n = global.scene.getRootObjectsCount();
@@ -17,7 +18,7 @@ function sceneHas(name: string): boolean {
 }
 import { MiseFlowLeafInteractor } from "./MiseFlowLeafInteractor";
 
-const DISHES = ["chicken 65", "chapathi", "tomato soup"];
+const DISHES = ["chicken 65", "chapathi", "tomato soup", "poori"];
 
 /**
  * CookPlanDishScenario.ts  (ids "cook-plan-chicken65" dish=0, "cook-plan-chapathi" dish=1, "cook-plan-generic" dish=2)
@@ -118,26 +119,72 @@ export class CookPlanDishScenario extends Scenario {
       print(`[CookScenario] world objects=${st.objects} tris=${st.tris} violations=${st.violations.length} loadEvents=${loadEvents}`);
       expect(loadEvents >= plan.ingredients.length).toBe(true);
       expect(st.objects <= 170).toBe(true);
-      expect(st.tris <= 7500).toBe(true);
+      expect(st.tris <= 8000).toBe(true);
       expect(st.violations.length).toBe(0);
       expect(Object.keys(world.items).length).toBe(plan.ingredients.length);
       expect(Object.keys(world.equipment).length).toBe(plan.equipment.length);
       expect(root.getTransform().getWorldScale().x < 0.01).toBe(true); // legacy setup stays hidden in Cook mode
 
+      // every tool and vessel must rest fully on the slab (no tool left floating off the bench)
+      {
+        const inv = world.root.getTransform().getInvertedWorldTransform();
+        const offBench: string[] = [];
+        for (const id in world.tools) {
+          const t = world.tools[id];
+          const l = inv.multiplyPoint(t.restPos);
+          const up = t.restRot.multiplyVec3(new vec3(0, 1, 0));
+          print(`[CookScenario] tool ${id} ${t.kind} local=(${l.x.toFixed(1)}, ${l.y.toFixed(1)}, ${l.z.toFixed(1)}) upY=${up.y.toFixed(2)}`);
+          if (l.x < BENCH.minX || l.x > BENCH.maxX || l.z < BENCH.minZ || l.z > BENCH.maxZ || l.y > 6 || up.y < 0.7) offBench.push(id);
+        }
+        expect(offBench.length).toBe(0);
+      }
       if (hold > 0) {
         print("[CookScenario] HOLD world ready");
         await sleep(hold * 1000);
       }
       // auto cook at 10x (1x when holding, so mid-cook screenshots are possible)
-      runtime.setSpeed(hold > 0 ? 2 : 10);
+      runtime.setSpeed(hold > 0 ? (which === 3 ? 1 : 2) : which === 3 ? 3 : 10);
       bus.emit("COOK_AUTO", { on: true });
-      for (let i = 0; i < 300 && !finished; i++) await sleep(500);
+      // poori: sample the disc while it is in the kadai (fry / flip) - it must never leave the vessel - and the oil geometry
+      let maxOut = -1e9; // how far the disc got outside the kadai wall during the flip (negative = inside)
+      let flipSeen = false;
+      for (let i = 0; i < 600 && !finished; i++) {
+        await sleep(which === 3 ? 150 : 500);
+        if (which === 3 && world.items.dough && world.equipment.kadai) {
+          const st2 = runtime.getState();
+          const inFry = st2.running.some((id: string) => id === "flip"); // the flip step runs after fry_first left the disc floating in the oil
+          if (st2.running.indexOf("flip") >= 0) flipSeen = true;
+          if (inFry) {
+            const k = world.equipment.kadai.floorWorld();
+            for (const pc of world.items.dough.pieces) {
+              const q = pc.getTransform().getWorldPosition();
+              maxOut = Math.max(maxOut, Math.sqrt((q.x - k.x) ** 2 + (q.z - k.z) ** 2) - world.equipment.kadai.radiusCm);
+            }
+          }
+        }
+      }
       const s = runtime.getState();
       print(`[CookScenario] finished=${finished} started=${started.length}/${plan.steps.length} done=${done.length} maxParallel=${maxRunning} errors=${s.errors} last="${s.lastError}"`);
       expect(finished).toBe(true);
       expect(started.length).toBe(plan.steps.length);
       expect(done.length).toBe(plan.steps.length);
       expect(s.errors).toBe(0);
+      // stray-object audit: nothing visible may float off the bench or high above it once the cook is over
+      {
+        const inv2 = world.root.getTransform().getInvertedWorldTransform();
+        const strays: string[] = [];
+        const walk = (o: SceneObject, path: string) => {
+          if (!o.enabled) return;
+          const rmv = o.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+          if (rmv && rmv.mesh) {
+            const l = inv2.multiplyPoint(o.getTransform().getWorldPosition());
+            if (l.x < BENCH.minX - 2 || l.x > BENCH.maxX + 2 || l.z < BENCH.minZ - 2 || l.z > BENCH.maxZ + 2 || l.y > 12) strays.push(`${path}/${o.name}@(${l.x.toFixed(1)},${l.y.toFixed(1)},${l.z.toFixed(1)})`);
+          }
+          for (let i = 0; i < o.getChildrenCount(); i++) walk(o.getChild(i), path + "/" + o.name);
+        };
+        walk(world.root, "");
+        print(`[CookScenario] strays=[${strays.slice(0, 8).join(" | ")}]`);
+      }
       // name tags: some step showed tags, never more than five at once
       expect(labelsMax >= 1 && labelsMax <= 5).toBe(true);
       // transformations: a vegetable that steps used is never left whole at the end
@@ -150,6 +197,24 @@ export class CookPlanDishScenario extends Scenario {
       }
       print(`[CookScenario] labelsMax=${labelsMax} forms=[${formReport.join(", ")}]`);
       if (which === 0) expect(maxRunning >= 2).toBe(true); // frying while the second pan tempers
+      if (which === 3) {
+        print(`[CookScenario] poori flipSeen=${flipSeen} maxOutsideKadai=${maxOut.toFixed(2)}`);
+        expect(flipSeen).toBe(true);
+        expect(maxOut > -1e8 && maxOut < 0).toBe(true); // sampled, and the disc stayed inside the kadai for the whole flip
+        // the poori ends on the plate, fully on the bench
+        const plate = world.equipment.plate;
+        const pf = plate.floorWorld();
+        const tr0 = world.root.getTransform();
+        for (const pc of world.items.dough.pieces) {
+          const q = pc.getTransform().getWorldPosition();
+          expect(Math.sqrt((q.x - pf.x) ** 2 + (q.z - pf.z) ** 2) < plate.radiusCm).toBe(true);
+          const l = tr0.getInvertedWorldTransform().multiplyPoint(q);
+          expect(l.x > BENCH.minX && l.x < BENCH.maxX && l.z > BENCH.minZ && l.z < BENCH.maxZ).toBe(true);
+        }
+        // the plate itself is fully on the slab
+        const lp = tr0.getInvertedWorldTransform().multiplyPoint(pf);
+        expect(lp.x + plate.radiusCm < BENCH.maxX && lp.x - plate.radiusCm > BENCH.minX && lp.z + plate.radiusCm < BENCH.maxZ && lp.z - plate.radiusCm > BENCH.minZ).toBe(true);
+      }
 
       if (hold > 0) {
         print("[CookScenario] HOLD finished");

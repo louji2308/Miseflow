@@ -46,7 +46,7 @@ function bowlR(e: CookEquipment): number {
 }
 
 export function wokScale(small: boolean): number {
-  return small ? 0.42 : 0.6;
+  return small ? 0.48 : 0.74; // bigger kadai / wok: room for a poori to float, flip and be lifted out
 }
 
 export function eqSpec(e: CookEquipment, k: number): EqSpec {
@@ -76,7 +76,8 @@ export function eqShape(s: EqSpec): Disc[] {
     d.push({ x: 8.3, z: 0, r: 2.1 }); // W2 board handle tab (+X)
     return d;
   }
-  const out: Disc[] = [{ x: 0, z: 0, r: s.footR }];
+  // a plate keeps a wider margin so its whole rim stays on the slab (the slab corners are rounded)
+  const out: Disc[] = [{ x: 0, z: 0, r: s.kind === "PLATE" ? s.footR + 1.0 : s.footR }];
   const hl = s.handleLen;
   if (hl > 0.4) {
     const w = 0.7;

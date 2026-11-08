@@ -181,7 +181,7 @@ class EqImpl implements EquipmentHandle {
   private steamAmt: number = 0;
   private oilObj: SceneObject | null = null;
   private oilMat: Material | null = null;
-  private oilLevel: number = 0;
+  private oilLevel01: number = 0;
   private bubbling: number = 0;
   private bubbles: { o: SceneObject; ph: number; a0: number }[] = [];
   private fillObj: SceneObject | null = null;
@@ -227,17 +227,26 @@ class EqImpl implements EquipmentHandle {
     return o;
   }
 
-  private placeDisc(o: SceneObject, level: number, depth: number, lift0: number): void {
-    const y = this.floorY + lift0 + level * depth;
-    const r = Math.max(0.3, innerR(this.inner, y) * 0.97);
+  /**
+   * Liquid surface disc. The height is the SAME formula the actions use (CookActionKit.levelY: floor + depth * level * 0.9) so
+   * food, bubbles and tools sit exactly on the drawn surface, and the radius is the vessel's inner wall at that height, so the
+   * liquid touches the wall (no gap) and can never be wider than the vessel (no overflow).
+   */
+  private placeDisc(o: SceneObject, level: number, _depth: number, _lift0: number): void {
+    const y = this.floorY + Math.max(0.15, (this.rimY - this.floorY) * clamp01(level) * 0.9);
+    const r = Math.max(0.3, innerR(this.inner, y) * 0.992);
     o.getTransform().setLocalPosition(new vec3(0, y, 0));
     o.getTransform().setLocalScale(new vec3(r, 1, r));
   }
 
+  oilLevel(): number {
+    return this.oilLevel01;
+  }
+
   setOil(level01: number, bubbling01: number): void {
-    this.oilLevel = clamp01(level01);
+    this.oilLevel01 = clamp01(level01);
     this.bubbling = clamp01(bubbling01);
-    if (this.oilLevel <= 0.001) {
+    if (this.oilLevel01 <= 0.001) {
       if (this.oilObj) this.oilObj.enabled = false;
       for (const b of this.bubbles) b.o.enabled = false;
       return;
@@ -247,7 +256,7 @@ class EqImpl implements EquipmentHandle {
       this.oilObj = this.discObj(`Cook_${this.id}_Oil`, this.oilMat);
     }
     this.oilObj.enabled = true;
-    this.placeDisc(this.oilObj, this.oilLevel, (this.rimY - this.floorY) * 0.45, 0.04);
+    this.placeDisc(this.oilObj, this.oilLevel01, 0, 0);
     if (this.bubbling > 0.01 && this.bubbles.length === 0) {
       const acc = new MeshAcc();
       acc.ellipsoid(0, 0, 0, 0.22, 0.14, 0.22, 6, 3);

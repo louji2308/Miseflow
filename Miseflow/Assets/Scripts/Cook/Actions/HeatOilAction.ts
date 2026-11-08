@@ -1,7 +1,8 @@
 /** HEAT_OIL: burner on, oil streams in and the level rises, then the surface starts to shimmer and bubble. */
 import { CookAction, CookActionContext, FX, fxBubbles, heatOf, itemsByRole, levelY, tipInto } from "./CookActionKit";
 
-export const OIL_LEVEL = 0.55;
+/** Deep-frying depth (fraction of the vessel depth, see levelY): oil climbs the wall but stays well below the rim. */
+export const OIL_LEVEL = 0.72;
 
 export const HeatOilAction: CookAction = {
   name: "HEAT_OIL",

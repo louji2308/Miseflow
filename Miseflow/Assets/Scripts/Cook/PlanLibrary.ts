@@ -184,8 +184,91 @@ export const CHAPATHI_PLAN: CookPlan = {
   garnishIds: [],
 };
 
+/** Poori: rolled small discs that fit the oil, puff and float, flip INSIDE the kadai, and are lifted straight onto the plate. */
+export const POORI_PLAN: CookPlan = {
+  found: true,
+  notFoundMessage: "",
+  dishTitle: "Poori",
+  cuisineTag: "North Indian",
+  equipment: [
+    { id: "dough_bowl", kind: "BOWL", role: "dough bowl", burner: 0 },
+    { id: "board", kind: "BOARD", role: "rolling board", burner: 0 },
+    { id: "kadai", kind: "KADAI", role: "frying kadai", burner: 1 },
+    { id: "plate", kind: "PLATE", role: "serving plate", burner: 0 },
+  ],
+  tools: [
+    { id: "rolling_pin", kind: "ROLLING_PIN" },
+    { id: "skimmer", kind: "SKIMMER" },
+  ],
+  ingredients: [
+    { id: "atta", name: "whole wheat flour (atta)", role: "FLOUR", form: "fine tan wheat flour", catalogueHint: 0, colorRaw: [0.9, 0.78, 0.55], colorDone: [0.9, 0.78, 0.55], amount: "1 cup" },
+    { id: "water", name: "water", role: "LIQUID", form: "clear water", catalogueHint: 0, colorRaw: [0.6, 0.8, 0.95], colorDone: [0.6, 0.8, 0.95], amount: "1/2 cup" },
+    { id: "salt", name: "salt", role: "SPICE", form: "fine white crystals", catalogueHint: 0, colorRaw: [0.97, 0.97, 0.95], colorDone: [0.97, 0.97, 0.95], amount: "1/2 tsp" },
+    { id: "oil", name: "frying oil", role: "OIL", form: "clear golden oil", catalogueHint: 165, colorRaw: [0.95, 0.8, 0.25], colorDone: [0.9, 0.65, 0.15], amount: "500 ml" },
+    { id: "dough", name: "poori dough", role: "DOUGH", form: "stiff round dough ball becoming a small thin round disc", catalogueHint: 120, colorRaw: [0.92, 0.8, 0.58], colorDone: [0.9, 0.58, 0.2], amount: "1 ball" },
+  ],
+  steps: [
+    {
+      id: "mix", action: "MIX", title: "Mix the dough",
+      whatWhy: "Bring atta, water and salt together; poori dough is kept stiff so it does not soak up oil.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["atta", "water", "salt"],
+      fromId: "", toId: "", durationSec: 6, heat: "OFF", count: 0, after: [],
+    },
+    {
+      id: "knead", action: "KNEAD", title: "Knead a stiff dough",
+      whatWhy: "Knead firmly; a stiff dough puffs into a hollow ball when it hits hot oil.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["dough"],
+      fromId: "", toId: "", durationSec: 8, heat: "OFF", count: 4, after: ["mix"],
+    },
+    {
+      id: "rest", action: "REST", title: "Rest the dough",
+      whatWhy: "Rest it covered so the gluten relaxes and the discs roll out evenly.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["dough"],
+      fromId: "", toId: "", durationSec: 4, heat: "OFF", count: 0, after: ["knead"],
+    },
+    {
+      id: "heat_oil", action: "HEAT_OIL", title: "Heat the frying oil",
+      whatWhy: "The oil must be hot before the first disc goes in, or the poori turns heavy and oily.",
+      equipmentId: "kadai", toolId: "", ingredientIds: ["oil"],
+      fromId: "", toId: "", durationSec: 6, heat: "HIGH", count: 0, after: ["rest"],
+    },
+    {
+      id: "roll", action: "ROLL_DOUGH", title: "Roll a small disc",
+      whatWhy: "Roll a small, even disc; an even thickness is what lets it puff up all the way round.",
+      equipmentId: "board", toolId: "rolling_pin", ingredientIds: ["dough"],
+      fromId: "dough_bowl", toId: "", durationSec: 8, heat: "OFF", count: 4, after: ["rest"],
+    },
+    {
+      id: "fry_first", action: "DEEP_FRY", title: "Fry the first side",
+      whatWhy: "Slide the disc in and press it down gently; it puffs and floats within seconds.",
+      equipmentId: "kadai", toolId: "skimmer", ingredientIds: ["dough", "oil"],
+      fromId: "board", toId: "", durationSec: 6, heat: "HIGH", count: 1, after: ["roll", "heat_oil"],
+    },
+    {
+      id: "flip", action: "FLIP", title: "Flip the poori",
+      whatWhy: "Turn it over in the oil once it puffs so the other side turns golden too.",
+      equipmentId: "kadai", toolId: "skimmer", ingredientIds: ["dough"],
+      fromId: "", toId: "", durationSec: 4, heat: "HIGH", count: 0, after: ["fry_first"],
+    },
+    {
+      id: "fry_second", action: "DEEP_FRY", title: "Fry the second side and lift out",
+      whatWhy: "Fry until evenly golden, then lift it out, drain it over the kadai and carry it to the plate.",
+      equipmentId: "kadai", toolId: "skimmer", ingredientIds: ["dough", "oil"],
+      fromId: "", toId: "", durationSec: 7, heat: "HIGH", count: 1, after: ["flip"],
+    },
+    {
+      id: "plate_dish", action: "PLATE", title: "Serve the poori",
+      whatWhy: "Serve it at once; a poori deflates and goes soft as it cools.",
+      equipmentId: "plate", toolId: "", ingredientIds: ["dough"],
+      fromId: "kadai", toId: "", durationSec: 3, heat: "OFF", count: 0, after: ["fry_second"],
+    },
+  ],
+  plateEquipmentId: "plate",
+  garnishIds: [],
+};
+
 /** Every fixture, in lookup order. */
-export const LIBRARY_PLANS: CookPlan[] = [CHICKEN_65_PLAN, CHAPATHI_PLAN];
+export const LIBRARY_PLANS: CookPlan[] = [CHICKEN_65_PLAN, CHAPATHI_PLAN, POORI_PLAN];
 
 /** Normalised aliases -> fixture. Keys go through normalizeQuery, so write them in plain lowercase words. */
 const ALIASES: { [alias: string]: CookPlan } = Object.create(null);
@@ -209,6 +292,7 @@ export function normalizeQuery(query: string): string {
 }
 
 addAliases(CHICKEN_65_PLAN, ["chicken 65", "chicken65", "chicken sixty five", "chicken sixtyfive", "chicken 65 recipe", "hyderabadi chicken 65", "andhra chicken 65"]);
+addAliases(POORI_PLAN, ["poori", "puri", "pooris", "puris", "poori recipe", "puri recipe", "fried puri", "fried poori"]);
 addAliases(CHAPATHI_PLAN, [
   "chapathi", "chapati", "chappathi", "chapatti", "chapathis", "chapatis", "roti", "rotis", "phulka", "phulkas", "fulka",
   "wheat roti", "indian flatbread", "indian flat bread", "whole wheat roti",

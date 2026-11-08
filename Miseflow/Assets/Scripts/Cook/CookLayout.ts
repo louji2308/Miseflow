@@ -35,7 +35,7 @@ export interface LayoutViolation {
 }
 
 /** Bench slab (bench-local cm). Slightly larger than the legacy counter (x -20..20, z -17..10.5), same top height. */
-export const BENCH = { minX: -21.0, maxX: 21.0, minZ: -17.5, maxZ: 11.0, topY: -0.23, thick: 3.2 };
+export const BENCH = { minX: -22.0, maxX: 22.0, minZ: -17.5, maxZ: 13.0, topY: -0.23, thick: 3.2 };
 
 export const MARGIN = 0.45;
 
