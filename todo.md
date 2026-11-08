@@ -1,3 +1,127 @@
+## v7 EXECUTION TRACKER (resume here)
+
+**Deadline:** 9 Nov 2026, 5:00 PM EST (22:00Z). **Started:** 2026-11-08 16:25Z. **Master plan:** `UPGRADE_PLAN_V7.md` (repo root). **Branch:** `main` (decision D-001). **Remote:** `origin` = https://github.com/louji2308/Miseflow (public).
+**Tags:** `[NOT STARTED]` `[IN PROGRESS]` `[COMPLETED]` `[BLOCKED]`. **Owner key:** `[ME]` orchestrator; `[opus/xhigh]` etc. = assigned sub-agent model + effort. Update this file the moment a task changes state; commit it with every gate commit.
+
+### Resume instructions (for a fresh agent on another account)
+1. Read `UPGRADE_PLAN_V7.md` completely (Part A constraints, Part G stages and gates, Part F LEAF table, Part M builder rules), then this tracker, then `PROJECT_STATUS.md`, `README.md`, `devpost/design-brief.md`, `Miseflow/AGENTS.md`.
+2. Load the ls-clad `lens-studio-router` skill and confirm Lens Studio MCP is connected (`scene-graphql` `{ rootSceneObjects { id name } }`). Never use raw HTTP against Lens Studio; MCP tools only.
+3. Run `RecompileTypeScriptTool` (must be 0 errors), then `RunAndCollectLogsTool` (must be clean). Run `git status` and `git log --oneline -8` to see which gate commit (`v7 stage N: ...`) is the latest; pull `origin/main` first.
+4. Pick the first `[IN PROGRESS]` task, otherwise the first `[NOT STARTED]` task, in the lowest unfinished stage. Never start a stage before the previous gate passed (gate = 0 TS errors + clean logs + `CaptureRuntimeView` screenshot in `docs/v7/` + the stage LEAF scenarios passing one at a time + tracker updated + commit `v7 stage N: <summary>` + push to `origin main`).
+5. LEAF scenarios run one at a time (a recompile cancels a running scenario; nobody may save into `Assets/` while one runs). Diff `Miseflow/Assets/Scene.scene` before committing (the LEAF plugin rewrites bridge ids). Never commit `.env` or a key (run the secret scan). Model ids only in `Assets/Scripts/AI/AiModelConfig.ts`.
+6. Hard rules never to break: dish 01 salmon beurre blanc untouched (Boot/Reset return to it); exact string "Dish not found. Enter the correct dish name."; ProposalGate floor 0.55; SIK/UIKit for every interaction with SIK/hand/gesture subscriptions inside `OnStartEvent`; branch device vs editor only via `global.deviceInfoSystem.isEditor()`; centimetres, right-handed; budgets (dish world <= 7,500 tris, new props <= 450, <= 16 dynamic bodies, physics `simulationRate` 240 + speed limit).
+
+### Stage tasks (Part G of the plan)
+
+**STAGE 0 Baseline** (gate: 24 existing LEAF pass; hit test verified or fallback chosen; `docs/v7/stage0-baseline.png`)
+- [COMPLETED] 0.1 Read plan, status, README, brief, todo, AGENTS; load router, field-notes, world-query, physics, interaction-recipes skills [ME]
+- [COMPLETED] 0.2 Confirm Lens Studio MCP connected via `scene-graphql` (7 root objects returned) [ME]
+- [COMPLETED] 0.3 Create this tracker [ME]
+- [COMPLETED] 0.4 Compile baseline: `RecompileTypeScriptTool` succeeded (0 errors), `RunAndCollectLogsTool` refresh clean (no errors, 24 scenarios registered, 2026-11-08 ~16:40Z). Triangle baseline taken from PROJECT_STATUS (chicken 65 world 7,024 tris, 0 dynamic physics bodies today) [ME]
+- [IN PROGRESS] 0.5 Preview config switched to Interactive + Sunlit Room + SPECS 27 (done 16:40Z; room has a low wooden sideboard and a round coffee table). Camera at origin, rotation x=348 (about -12 deg). Still to do: place camera ~80 cm from a table at pitch ~-30 and record the exact pose [ME after probe]
+- [IN PROGRESS] 0.6 World Query / world-mesh probe: staged and not yet compiled or run (`docs/v7/notes/WorldQueryProbe.ts`, `docs/v7/notes/probe-run-instructions.md`, written by sonnet/high). Execution follows after 0.7 because any save under Assets cancels LEAF. Facts from StudioLib.d.ts reported by the agent: WorldQueryModule / HitTestSession / SurfaceClassification are tagged `@wearableOnly` (a simulator null is plausible); `raycastWorldMesh` and `hitTestWorldMesh` return empty unless world-mesh tracking is on (World Mesh in the scene or `worldOptions.enableWorldMeshesTracking = true`, DeviceTracking in World mode); `createTrackedWorldPoint` is deprecated, do not use it [sonnet/high]
+- [IN PROGRESS] 0.7 Run all 24 existing LEAF scenarios one at a time: haiku runner started 16:45Z, results appended to `docs/v7/notes/stage0-leaf-baseline.md`. Smoke test by ME: `proposal-gate-rejection-scenario` succeeded under Sunlit Room [haiku/medium]
+- [IN PROGRESS] 0.7b Opus read-only Stage 1 audit + design -> `docs/v7/notes/stage1-audit.md` (runs in parallel; writes nothing under Assets) [opus/high]
+- [NOT STARTED] 0.8 Gate: screenshot, fill gate table, secret scan, commit (include `UPGRADE_PLAN_V7.md`, D-002) and push [ME]
+
+**STAGE 1 Anchor root and head pose** (gate: 24 pass + orbit capture showing labels following)
+- [NOT STARTED] 1.1 Read-only audit: StationsRoot / CookStageRoot users, LEAF object-name lookups, `CAM_LOCAL` consumers [opus/high]
+- [NOT STARTED] 1.2 `KitchenAnchorRoot` controller (new): root pose, slab visibility, stable API for claims [opus/xhigh]
+- [NOT STARTED] 1.3 Re-parent legacy `StationsRoot` and Cook `CookStageRoot` under the root, keep object names and LEAF lookups alive [opus/xhigh]
+- [NOT STARTED] 1.4 Live head-pose billboarding in `MiseFlowSpatialUI` (replace `CAM_LOCAL`), rings stay flush, nothing parented to the camera [sonnet/high]
+- [NOT STARTED] 1.5 Update `station-setup-scenario` for the anchored hierarchy [sonnet/medium]
+- [NOT STARTED] 1.6 Gate: 24 pass one at a time, orbit screenshots, commit, push [ME]
+
+**STAGE 2 Claim and memory** (gate: `claim-stations`, `kitchen-recall`)
+- [NOT STARTED] 2.1 Add v7 events to `MiseFlowEventBus` (STATION_CLAIMED, KITCHEN_RECALLED, HAND_AT_STATION, HAND_LEFT_STATION, STEP_DONE_PINCHED, TASK_LATE, PUCK_DISPLACED, HEAT_GUARD, ALERT_RAISED, ALERT_RESOLVED, REPLAN_REQUESTED, OPEN_DISH_STUDIO, PALETTE_REQUESTED) [opus/high]
+- [NOT STARTED] 2.2 `ClaimController`: reticle, hit-test session started in OnStartEvent, 12 cm ring, 4 dots, validation (15 deg, 18 cm apart, 120 cm span), undo within 3 s, "Find a flat spot." / "Look at your counter." [opus/xhigh]
+- [NOT STARTED] 2.3 `KitchenPersistence` bridge: editor persistent storage + "Preview memory stand-in" label; device AnchorModule path guarded by isEditor(); `remember/recall/forget` [opus/xhigh]
+- [NOT STARTED] 2.4 Re-role `VisionScanStandIn` as claim recognizer (gate unchanged) [sonnet/medium]
+- [NOT STARTED] 2.5 LEAF `claim-stations-scenario`, `kitchen-recall-scenario` [sonnet/high]
+- [NOT STARTED] 2.6 Gate: run new scenarios + 24 regression, screenshot, commit, push [ME]
+
+**STAGE 3 Targets and palette** (gate: `single-ui-invariant`, `fov-budget`, updated `station-setup`)
+- [IN PROGRESS] 3.0 Read-only audit + StationTarget/palette design -> `docs/v7/notes/stage3-audit.md` (started 16:50Z, writes nothing under Assets) [sonnet/high]
+- [NOT STARTED] 3.1 `StationTarget` component (S4): 4.5 cm UIKit button, dot/open/alert states, events in/out [sonnet/high]
+- [NOT STARTED] 3.2 Replace pills and legacy step cards with targets for dishes 01-06 and Cook dishes; one UI [sonnet/high]
+- [NOT STARTED] 3.3 `DirectorPalette` (S8): SIM/debug controls moved out of the dock; hold-pinch 1.5 s on plate target, key D; dock removed from product [sonnet/high]
+- [NOT STARTED] 3.4 Plate target: "Plate" and "Name a dish" (opens Dish Studio) [sonnet/medium]
+- [NOT STARTED] 3.5 LEAF `single-ui-invariant-scenario`, `fov-budget-scenario`, updated `station-setup-scenario` [sonnet/high]
+- [NOT STARTED] 3.6 Gate [ME]
+
+**STAGE 4 Hands and attention** (gate: `hand-zone-target`, `attention-chime-beacon`)
+- [NOT STARTED] 4.1 `HandZoneSensor` (nearest station within 25 cm, dwell, editor fallback via interactor point, drift signal) [sonnet/high]
+- [NOT STARTED] 4.2 `AttentionDirector` (priorities, one alert, chime every 8 s, resolve rules); chime asset via build-sfx [sonnet/high]
+- [NOT STARTED] 4.3 Drive `GazeEdgeBeacon` from the director [sonnet/medium]
+- [NOT STARTED] 4.4 LEAF `hand-zone-target-scenario`, `attention-chime-beacon-scenario` [sonnet/high]
+- [NOT STARTED] 4.5 Gate [ME]
+
+**STAGE 5 Rail v1 (physics, the hero)** (gate: `rail-forms`, `rail-drift-contact`, `pinned-sear-heat-guard`)
+- [IN PROGRESS] 5.0 Read-only rail physics + DAG adapter design (WorldSettingsAsset feasibility, puck dynamics, observable API) -> `docs/v7/notes/stage5-rail-design.md` (started 16:50Z, writes nothing under Assets) [opus/xhigh]
+- [NOT STARTED] 5.1 Physics world settings: WorldSettingsAsset simulationRate 240, relative speed limit ~100 cm/s [opus/xhigh]
+- [NOT STARTED] 5.2 `ScheduleRail` geometry: trough, 3 lanes + plate lane, lips, <= 600 tris [opus/xhigh]
+- [NOT STARTED] 5.3 `RailPuck` (<= 120 tris, label, lock glyph) and spawn from DAG tasks [opus/xhigh]
+- [NOT STARTED] 5.4 `RailAdapter`: DAG schedule -> puck targets, spring drive, read-back with dead zone 0.5 cm / 250 ms [opus/xhigh]
+- [NOT STARTED] 5.5 Lateness growth, cross-lane tethers, pinned sear static collider, HEAT_GUARD [opus/xhigh]
+- [NOT STARTED] 5.6 Now bead, ghost tick, chronometer on the plate puck/target, conduit tether visuals [sonnet/high]
+- [NOT STARTED] 5.7 LEAF `rail-forms-scenario`, `rail-drift-contact-scenario`, `pinned-sear-heat-guard-scenario`; natural-lateness variant of `prep-drift-resolver-scenario` [sonnet/high]
+- [NOT STARTED] 5.8 Gate (physics debug draw off for the screenshot) [ME]
+
+**STAGE 6 Re-plan** (gate: `replan-grab`)
+- [NOT STARTED] 6.1 Plate puck SIK manipulation constrained to its lane; kinematic on grab, dynamic on release [opus/xhigh]
+- [NOT STARTED] 6.2 DAG re-plan on slide right/left, infeasible squeeze flash and spring-back [opus/xhigh]
+- [NOT STARTED] 6.3 LEAF `replan-grab-scenario` [sonnet/high]
+- [NOT STARTED] 6.4 Gate [ME]
+
+**STAGE 7 Ghosts and previews** (gate: `ghost-preview`, `cook-on-claimed-spots`, existing cook scenarios)
+- [NOT STARTED] 7.1 `GhostMaterializer` (35% alpha, silver rim, real-size vessels, timed hiding on device) [sonnet/high]
+- [NOT STARTED] 7.2 `TechniquePreviewPlayer` (one preview at a time, <= 2.5 s, rehearsal mode in palette) [sonnet/high]
+- [NOT STARTED] 7.3 Cook engine on claimed spots (`CookLayout`, `CookStage`, ghosted slab, third burner = warm spot) [sonnet/high]
+- [NOT STARTED] 7.4 LEAF `ghost-preview-scenario`, `cook-on-claimed-spots-scenario` + existing cook scenarios [sonnet/high]
+- [NOT STARTED] 7.5 Gate [ME]
+
+**STAGE 8 Device paths (guarded, "feel unproven")** (gate: compiles, no editor regressions)
+- [NOT STARTED] 8.1 Device hand data, world-mesh Table classification, anchors confirmed behind isEditor() [sonnet/medium]
+- [NOT STARTED] 8.2 CameraModule capture -> `RapidRouterVisionService.buildRequestBody` -> `ProposalGate` (guarded) [sonnet/medium]
+- [NOT STARTED] 8.3 Depth-grounded label placement (guarded) [sonnet/medium]
+- [NOT STARTED] 8.4 Gate: compile, logs, full regression subset [ME]
+
+**STAGE 9 Ship**
+- [NOT STARTED] 9.1 Append v7 section to `devpost/design-brief.md`, mirror to `Miseflow/devpost/` [haiku/medium]
+- [NOT STARTED] 9.2 README v7 (flow, camera pose, palette, true model id, true scenario count, template-origin sentence) [haiku/medium]
+- [NOT STARTED] 9.3 `PROJECT_STATUS.md` + `devpost/submission-draft.md` (real vs stand-in vs device-only table) [haiku/medium]
+- [NOT STARTED] 9.4 Recording checklist with the exact preview camera pose and `docs/v7/` screenshots [haiku/low]
+- [NOT STARTED] 9.5 Full regression: 24 existing + new scenarios, list any without a test [sonnet/medium live-lens-tester]
+- [NOT STARTED] 9.6 Secret scan, final summary here (real / stand-in / device-only unproven), final push [ME]
+
+### Decisions log
+- 2026-11-08 16:25Z D-001: work directly on `main` (plan Stage 0 says branch `v7-spatial`, but the orchestrator brief requires pushing every gate to `origin main` so another account can resume from GitHub).
+- 2026-11-08 16:25Z D-002: `UPGRADE_PLAN_V7.md` is committed with the Stage 0 gate (older notes say never commit `*_PLAN.md`; the resume flow needs it on GitHub).
+- 2026-11-08 16:25Z D-003: Lens Studio reports `Editor.IAuthorization.isAuthorized = false`. MCP is reachable, so work continues (TypeScript, scene, physics, LEAF need no account). `authorize()` is never called. Account-bound tools (asset library, generative SFX) get a local fallback if they refuse; recorded here if used.
+- 2026-11-08 16:25Z D-004: Part N defaults taken: keep "Name a dish"; four claimed stations, warm spot on demand; record in the Sunlit Room preview with SPECS 27; Anthropic only, no live AI on the demo path; append a v7 section to the brief (do not replace v6).
+- 2026-11-08 16:25Z D-005: code authoring that touches `Assets/` is serialized (one writer at a time) because any save triggers a recompile that cancels a running LEAF scenario; parallel sub-agents are used for disjoint new files, read-only audits and docs outside `Assets/`.
+
+### Gate results
+| Stage | LEAF scenarios run | Pass/fail | Tris / dynamic bodies | Screenshot | Commit |
+|---|---|---|---|---|---|
+| 0 | | | | | |
+| 1 | | | | | |
+| 2 | | | | | |
+| 3 | | | | | |
+| 4 | | | | | |
+| 5 | | | | | |
+| 6 | | | | | |
+| 7 | | | | | |
+| 8 | | | | | |
+| 9 | | | | | |
+
+### Known issues
+- Lens Studio `isAuthorized` is false on this machine (see D-003).
+- Preview currently on the empty "Plane" scene; Stage 0.5 switches it to Sunlit Room.
+- Docs out of date until Stage 9: README/brief/submission say `claude-sonnet-5-5` and 21 scenarios; code uses `claude-opus-5-5` and 24 scenarios.
+
+---
+
 # MiseFlow AR v5.0 – Master TODO (Universal AI Culinary Mastery) – handover-ready
 
 **Goal: WIN Learn AR with SPECS** (deadline 2026-11-09 14:00 PST). Judges see only the <3 min Lens Studio Preview video.
