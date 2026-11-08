@@ -18,10 +18,10 @@
 - [COMPLETED] 0.2 Confirm Lens Studio MCP connected via `scene-graphql` (7 root objects returned) [ME]
 - [COMPLETED] 0.3 Create this tracker [ME]
 - [COMPLETED] 0.4 Compile baseline: `RecompileTypeScriptTool` succeeded (0 errors), `RunAndCollectLogsTool` refresh clean (no errors, 24 scenarios registered, 2026-11-08 ~16:40Z). Triangle baseline taken from PROJECT_STATUS (chicken 65 world 7,024 tris, 0 dynamic physics bodies today) [ME]
-- [IN PROGRESS] 0.5 Preview config switched to Interactive + Sunlit Room + SPECS 27 (done 16:40Z; room has a low wooden sideboard and a round coffee table). Camera at origin, rotation x=348 (about -12 deg). Still to do: place camera ~80 cm from a table at pitch ~-30 and record the exact pose [ME after probe]
-- [IN PROGRESS] 0.6 World Query / world-mesh probe: staged and not yet compiled or run (`docs/v7/notes/WorldQueryProbe.ts`, `docs/v7/notes/probe-run-instructions.md`, written by sonnet/high). Execution follows after 0.7 because any save under Assets cancels LEAF. Facts from StudioLib.d.ts reported by the agent: WorldQueryModule / HitTestSession / SurfaceClassification are tagged `@wearableOnly` (a simulator null is plausible); `raycastWorldMesh` and `hitTestWorldMesh` return empty unless world-mesh tracking is on (World Mesh in the scene or `worldOptions.enableWorldMeshesTracking = true`, DeviceTracking in World mode); `createTrackedWorldPoint` is deprecated, do not use it [sonnet/high]
-- [IN PROGRESS] 0.7 Run all 24 existing LEAF scenarios one at a time: haiku runner started 16:45Z, results appended to `docs/v7/notes/stage0-leaf-baseline.md`. Smoke test by ME: `proposal-gate-rejection-scenario` succeeded under Sunlit Room [haiku/medium]
-- [IN PROGRESS] 0.7b Opus read-only Stage 1 audit + design -> `docs/v7/notes/stage1-audit.md` (runs in parallel; writes nothing under Assets) [opus/high]
+- [IN PROGRESS] 0.5 Preview config switched to Interactive + Sunlit Room + SPECS 27 (done 16:40Z, re-applied 16:52Z after the crash; room has a low wooden sideboard and a round coffee table). Camera at origin, rotation x=348 (about -12 deg). The probe agent (started 17:37Z) records a recording pose ~80 cm from the table at pitch ~-30 in `docs/v7/notes/probe-results.md` and saves `docs/v7/stage0-baseline.png` [sonnet/medium]
+- [IN PROGRESS] 0.6 World Query / world-mesh probe: execution started 17:37Z by a sonnet agent (`docs/v7/notes/WorldQueryProbe.ts` + `probe-run-instructions.md`; it copies the script into Assets, runs it, then removes it again and writes `probe-results.md`; a different agent had staged the files, and the script had never been compiled before). Facts from StudioLib.d.ts reported by the agent: WorldQueryModule / HitTestSession / SurfaceClassification are tagged `@wearableOnly` (a simulator null is plausible); `raycastWorldMesh` and `hitTestWorldMesh` return empty unless world-mesh tracking is on (World Mesh in the scene or `worldOptions.enableWorldMeshesTracking = true`, DeviceTracking in World mode); `createTrackedWorldPoint` is deprecated, do not use it [sonnet/high]
+- [COMPLETED] 0.7 All 24 existing LEAF scenarios PASS one at a time under Sunlit Room / SPECS 27 (run by ME, finished 17:34Z; table in `docs/v7/notes/stage0-leaf-baseline.md`). Live scenarios ran with the local key (`live-ai-compile` 57.7 s). Note: a `run_leaf_scenario` MCP call times out at about 60 s; read `PASSED:` from the log then
+- [COMPLETED] 0.7b Opus read-only Stage 1 audit + design -> `docs/v7/notes/stage1-audit.md` (written before the 5-hour limit hit; 339 lines, file:line map, `KitchenAnchorRoot` + `HeadPoseBillboard` API, implementation checklist and risks) [opus/high]
 - [NOT STARTED] 0.8 Gate: screenshot, fill gate table, secret scan, commit (include `UPGRADE_PLAN_V7.md`, D-002) and push [ME]
 
 **STAGE 1 Anchor root and head pose** (gate: 24 pass + orbit capture showing labels following)
@@ -41,7 +41,7 @@
 - [NOT STARTED] 2.6 Gate: run new scenarios + 24 regression, screenshot, commit, push [ME]
 
 **STAGE 3 Targets and palette** (gate: `single-ui-invariant`, `fov-budget`, updated `station-setup`)
-- [IN PROGRESS] 3.0 Read-only audit + StationTarget/palette design -> `docs/v7/notes/stage3-audit.md` (started 16:50Z, writes nothing under Assets) [sonnet/high]
+- [NOT STARTED] 3.0 Read-only audit + StationTarget/palette design -> `docs/v7/notes/stage3-audit.md` (the first attempt was lost in the 16:35Z crash; redo as part of the Stage 3 implementation brief) [sonnet/high]
 - [NOT STARTED] 3.1 `StationTarget` component (S4): 4.5 cm UIKit button, dot/open/alert states, events in/out [sonnet/high]
 - [NOT STARTED] 3.2 Replace pills and legacy step cards with targets for dishes 01-06 and Cook dishes; one UI [sonnet/high]
 - [NOT STARTED] 3.3 `DirectorPalette` (S8): SIM/debug controls moved out of the dock; hold-pinch 1.5 s on plate target, key D; dock removed from product [sonnet/high]
@@ -57,7 +57,7 @@
 - [NOT STARTED] 4.5 Gate [ME]
 
 **STAGE 5 Rail v1 (physics, the hero)** (gate: `rail-forms`, `rail-drift-contact`, `pinned-sear-heat-guard`)
-- [IN PROGRESS] 5.0 Read-only rail physics + DAG adapter design (WorldSettingsAsset feasibility, puck dynamics, observable API) -> `docs/v7/notes/stage5-rail-design.md` (started 16:50Z, writes nothing under Assets) [opus/xhigh]
+- [NOT STARTED] 5.0 Rail physics + DAG adapter design (WorldSettingsAsset feasibility, puck dynamics, observable API) -> `docs/v7/notes/stage5-rail-design.md` (the first attempt was lost in the 16:35Z crash; redo at the start of Stage 5, then implement in the same pass) [opus/xhigh]
 - [NOT STARTED] 5.1 Physics world settings: WorldSettingsAsset simulationRate 240, relative speed limit ~100 cm/s [opus/xhigh]
 - [NOT STARTED] 5.2 `ScheduleRail` geometry: trough, 3 lanes + plate lane, lips, <= 600 tris [opus/xhigh]
 - [NOT STARTED] 5.3 `RailPuck` (<= 120 tris, label, lock glyph) and spawn from DAG tasks [opus/xhigh]
@@ -99,6 +99,8 @@
 - 2026-11-08 16:25Z D-002: `UPGRADE_PLAN_V7.md` is committed with the Stage 0 gate (older notes say never commit `*_PLAN.md`; the resume flow needs it on GitHub).
 - 2026-11-08 16:25Z D-003: Lens Studio reports `Editor.IAuthorization.isAuthorized = false`. MCP is reachable, so work continues (TypeScript, scene, physics, LEAF need no account). `authorize()` is never called. Account-bound tools (asset library, generative SFX) get a local fallback if they refuse; recorded here if used.
 - 2026-11-08 16:25Z D-004: Part N defaults taken: keep "Name a dish"; four claimed stations, warm spot on demand; record in the Sunlit Room preview with SPECS 27; Anthropic only, no live AI on the demo path; append a v7 section to the brief (do not replace v6).
+- 2026-11-08 16:55Z D-006: the laptop shut down at about 16:35Z and Lens Studio was reopened. The preview config had reverted to Plane (reset to Sunlit Room), four background agents were stopped, and the Stage 1/3/5 audit notes were never written. Stages 3 and 5 design are folded into their implementation passes to save usage. Checkpoint commit `2cc8c32` pushed. A `run_leaf_scenario` MCP call can return "The operation timed out." while the scenario still passes; never re-trigger on a timeout, read the log tail for `PASSED:` / `FAILED:` instead.
+- 2026-11-08 16:55Z D-007: secret scan is fail-closed from now on: `git diff --cached | grep -E "sk-ant-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{32,}|AKIA[0-9A-Z]{16}"` must print nothing (the old prose line in this file that mentions `sk-ant-` is a known false positive for a loose pattern).
 - 2026-11-08 16:25Z D-005: code authoring that touches `Assets/` is serialized (one writer at a time) because any save triggers a recompile that cancels a running LEAF scenario; parallel sub-agents are used for disjoint new files, read-only audits and docs outside `Assets/`.
 
 ### Gate results

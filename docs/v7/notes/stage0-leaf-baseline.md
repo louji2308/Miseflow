@@ -1,9 +1,30 @@
-# Stage 0 LEAF baseline
+# Stage 0 LEAF baseline (Interactive / Sunlit Room / SPECS 27, onDevice false, default parameters)
 
-Runner: LEAF baseline runner (one scenario at a time, Lens Studio preview, Interactive / Sunlit Room / SPECS 27, onDevice false, default parameters).
+Run by the orchestrator, one scenario at a time, after the 16:35Z laptop crash. Code state = commit 9e8b9af plus docs only (no Assets changes). An MCP `run_leaf_scenario` call times out at about 60 s; for longer scenarios the pass line is read from the Lens Studio log (`PASSED: <id>`).
 
-| scenario | start UTC | end UTC | status | note |
-|---|---|---|---|---|
-| station-setup-scenario | 16:28Z | 16:30Z | timeout (attempt 1) | MCP run_leaf_scenario call returned 'The operation timed out.' |
-| station-setup-scenario | 16:30Z | 16:31Z | timeout (attempt 2) | MCP call timed out again. Log tail (60000 bytes): attempt 1 actually logged 'PASSED: station-setup-scenario' at 22:00:09 local (6.3s); attempt 2 logged 'Running scenario' at 22:00:17 with no completion line. Harness-side timeout, not a scenario failure. |
-| metric-blade-stepping-scenario | 16:31Z | 16:33Z | timeout (attempt 1) | run_leaf_scenario timed out; follow-up tail read also timed out, so the MCP bridge looks unresponsive |
+| # | scenario | status | note |
+|---|---|---|---|
+| 1 | station-setup-scenario | PASS | 16:52Z |
+| 2 | metric-blade-stepping-scenario | PASS | |
+| 3 | volumetric-portion-dome-scenario | PASS | |
+| 4 | transfer-arc-scenario | PASS | |
+| 5 | time-warp-plating-scenario | PASS | |
+| 6 | prep-drift-resolver-scenario | PASS | |
+| 7 | gaze-wayfinding-beacon-scenario | PASS | |
+| 8 | proposal-gate-rejection-scenario | PASS | ran 16:40Z before the crash, same code |
+| 9 | spatula-flip-guide-scenario | PASS | |
+| 10 | auto-cook-full-flow | PASS | |
+| 11 | universal-dish-page-table | PASS | |
+| 12 | multi-dish-auto-cook | PASS | |
+| 13 | dish-studio-flow | PASS | |
+| 14 | step-engine | PASS | |
+| 15 | dish-biryani-cook | PASS | |
+| 16 | dish-noodles-cook | PASS | |
+| 17 | live-ai-compile | PASS | 57.7 s; live plan "Lemon Tiramisu" in 49 s; gibberish returned the exact not-found string. MCP call timed out, log shows `PASSED` |
+| 18 | cook-plan-chicken65 | PASS | |
+| 19 | cook-plan-chapathi | PASS | |
+| 20 | cook-plan-generic | PASS | |
+| 21 | cook-plan-poori | PASS | |
+| 22 | cook-plan-athirasam | PASS | |
+| 23 | shape-gallery | PASS | |
+| 24 | asset-gallery | PASS | |
