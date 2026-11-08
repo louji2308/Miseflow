@@ -51,6 +51,9 @@ export class MiseFlowButtonTrigger extends BaseScriptComponent {
     // P5 Dish Studio: Btn_StudioSpeak -> STUDIO_SPEAK, Btn_StudioChip_3 -> STUDIO_CHIP_3, Btn_LetsCook -> LETS_COOK
     if (n.indexOf("Btn_Studio") === 0) return "STUDIO_" + n.substring(10).toUpperCase();
     if (n.indexOf("LetsCook") !== -1) return "LETS_COOK";
+    // Chef Director step card (UIKit-owned): LEAF/automation entry points only
+    if (n.indexOf("Btn_CookDoStep") === 0) return "COOK_DO_STEP";
+    if (n.indexOf("Btn_CookAuto") === 0) return "COOK_AUTO";
     return "";
   }
 

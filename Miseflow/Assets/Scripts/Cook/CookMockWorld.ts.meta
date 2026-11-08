@@ -1,0 +1,50 @@
+- !<AssetImportMetadata/ad0ce9a7-28c8-413b-83d8-37eeae6b40db>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 4c929ca9-b75f-421b-b074-ad6bfb54e380
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 4c929ca9-b75f-421b-b074-ad6bfb54e380
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> efeada48-e615-499f-8959-2bf54a4ca537
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/efeada48-e615-499f-8959-2bf54a4ca537>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 00000000-0000-0000-0000-000000000000
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    {}
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    -
+      {}
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input bool autoRun
+    - '// @input string planName = "all"'
+    - // @input string only
+    - // @input float speed = 2

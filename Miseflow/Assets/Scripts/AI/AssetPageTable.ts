@@ -36,7 +36,7 @@ import {
 
 const ENDPOINT_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const SYNTH_TIMEOUT_MS = 2500;
+const SYNTH_TIMEOUT_MS = 15000; // live synth measured ~8-10 s
 const SYNTH_MAX_TOKENS = 400;
 
 export const DYNAMIC_INGREDIENT_FIRST = 200;

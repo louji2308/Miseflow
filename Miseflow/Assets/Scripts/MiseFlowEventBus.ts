@@ -5,6 +5,17 @@
  */
 
 export type MiseFlowEventType =
+  | "COOK_PLAN_REQUESTED"
+  | "COOK_PLAN_READY"
+  | "COOK_LOAD_PROGRESS"
+  | "COOK_WORLD_READY"
+  | "COOK_STEP_STARTED"
+  | "COOK_STEP_DONE"
+  | "COOK_FINISHED"
+  | "COOK_EXIT"
+  | "COOK_DO_STEP"
+  | "COOK_AUTO"
+  | "COOK_NEW_DISH"
   | "TASK_STARTED"
   | "TASK_COMPLETED"
   | "DRIFT_RECORDED"

@@ -65,6 +65,10 @@ export class DishStudio extends BaseScriptComponent {
   private screen: StudioScreen = "CLOSED";
   private stationsRoot: SceneObject | null = null;
   private savedScale: vec3 | null = null;
+  /** True while a Chef Director (Cook engine) dish owns the scene: the legacy setup stays collapsed after the briefing. */
+  private cookMode: boolean = false;
+  /** A Cook world is built and on the bench (set on COOK_WORLD_READY, cleared on COOK_EXIT / Reset). */
+  private cookWorldUp: boolean = false;
   private clock: number = 0;
   private warmup: number = 0;
 
@@ -128,8 +132,17 @@ export class DishStudio extends BaseScriptComponent {
       this.listen("STUDIO_TEXT_SUBMITTED", (d?: StudioTextSubmittedPayload) => this.onTextSubmitted(d));
       this.listen("DISH_NOT_FOUND", () => this.onNotFound());
       this.listen("DISH_BLUEPRINT_APPLIED", (d?: any) => this.onBlueprint(d));
-      this.listen("BRIEFING_COMPLETED", () => this.exitStudio(true));
-      this.listen("RESET_REQUESTED", () => this.exitStudio(true));
+      this.listen("COOK_PLAN_READY", (d?: any) => this.onCookPlan(d));
+      this.listen("COOK_EXIT", () => this.leaveCookMode());
+      this.listen("COOK_WORLD_READY", () => (this.cookWorldUp = true));
+      this.listen("COOK_NEW_DISH", () => this.openHome());
+      // Cook mode keeps the legacy setup hidden after the briefing (the Cook bench replaces it); Reset/Exit restore it.
+      this.listen("BRIEFING_COMPLETED", () => this.exitStudio(!this.cookMode));
+      this.listen("RESET_REQUESTED", () => {
+        if (this.cookMode) this.eventBus.emit("COOK_EXIT");
+        this.leaveCookMode();
+        this.exitStudio(true);
+      });
     });
     this.createEvent("UpdateEvent").bind(() => this.onUpdate());
     this.createEvent("OnDestroyEvent").bind(() => {
@@ -241,7 +254,13 @@ export class DishStudio extends BaseScriptComponent {
     if (this.screen === "IDENTIFYING") {
       const c = this.compiler();
       if (c) c.cancelPending();
+      this.eventBus.emit("COOK_EXIT"); // also cancels an in-flight Chef Director request (and disposes a running Cook world)
     }
+    if (this.cookWorldUp) {
+      this.exitStudio(false); // a Cook dish is on the bench: Back returns to it, the legacy setup stays collapsed
+      return;
+    }
+    this.leaveCookMode();
     this.exitStudio(true);
   }
 
@@ -250,8 +269,53 @@ export class DishStudio extends BaseScriptComponent {
       if (this.pendingDeck) return;
       const c = this.compiler();
       if (c) c.cancelPending();
+      this.eventBus.emit("COOK_EXIT");
     }
     this.goHome("");
+  }
+
+  /** Cook mode ends: the legacy setup scale is written back if it is still collapsed. Idempotent. */
+  private leaveCookMode(): void {
+    this.cookMode = false;
+    this.cookWorldUp = false;
+    if (this.screen === "CLOSED" && this.stationsRoot && this.savedScale !== null) {
+      this.stationsRoot.getTransform().setLocalScale(this.savedScale);
+      this.savedScale = null;
+    }
+  }
+
+  /** Chef Director plan arrived: show its steps as the briefing cards (one step per card), same flow as a preset dish. */
+  private onCookPlan(d?: any): void {
+    const plan = d && d.plan;
+    if (!plan || !plan.found || !plan.steps || plan.steps.length === 0) return;
+    this.cookMode = true;
+    if (this.screen === "CLOSED") this.enterStudio();
+    if (this.screen === "DECK") return;
+    const cap = (s: any, n: number): string => (typeof s === "string" ? s : "").substring(0, n);
+    const kindOf: { [id: string]: string } = {};
+    for (const e of plan.equipment || []) kindOf[e.id] = e.kind;
+    const cards = plan.steps.slice(0, 12).map((st: any, i: number) => {
+      const k = kindOf[st.equipmentId] || "";
+      const why = cap(st.whatWhy, 160);
+      const cut = why.indexOf(" - ") >= 0 ? why.indexOf(" - ") : why.indexOf(". ") >= 0 ? why.indexOf(". ") + 1 : Math.floor(why.length * 0.55);
+      return {
+        stepNumber: i + 1,
+        stationFocus: k === "PLATE" ? "PLATING" : k === "BOWL" || k === "BOARD" ? "PREP" : "SKILLET",
+        headline: cap(st.title, 28).toUpperCase(),
+        instruction: cap(why.substring(0, cut), 75),
+        masteryWhy: cap(why.substring(cut).replace(/^[\s.\-]+/, "") || why, 65),
+      };
+    });
+    const bp: any = {
+      dishId: "cook_" + cap(plan.dishTitle, 24).toLowerCase().replace(/[^a-z0-9]+/g, "_"),
+      dishTitle: cap(plan.dishTitle, 32).toUpperCase(),
+      cuisineTag: cap(plan.cuisineTag, 24),
+      cookbookCards: cards,
+    };
+    const status = `${plan.steps.length} STEPS • ${(plan.ingredients || []).length} INGREDIENTS • ${(plan.equipment || []).length} VESSELS`;
+    const at = this.screen === "IDENTIFYING" ? this.identifyAt + MIN_IDENTIFY_SEC : this.clock;
+    this.pendingDeck = { bp: bp as UniversalDishBlueprint, status: status, at: at };
+    if (at <= this.clock) this.showDeck();
   }
 
   private goHome(notice: string): void {
@@ -379,6 +443,11 @@ export class DishStudio extends BaseScriptComponent {
 
   private onBlueprint(d?: any): void {
     if (!d || !d.blueprint || !d.showBriefing) return;
+    if (this.cookMode) {
+      // a prebuilt dish replaces a Cook-engine dish: dispose the Cook world; the legacy setup comes back after the briefing
+      this.cookMode = false;
+      this.eventBus.emit("COOK_EXIT");
+    }
     if (this.screen === "CLOSED") this.enterStudio(); // voice / bus requests land in the studio too
     if (this.screen === "DECK") return;
     const status = typeof d.statusLine === "string" ? d.statusLine : "";

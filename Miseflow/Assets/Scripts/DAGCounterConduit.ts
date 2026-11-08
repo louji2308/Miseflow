@@ -5,6 +5,10 @@ import { RoundedRectangle } from "SpectaclesUIKit.lspkg/Scripts/Visuals/RoundedR
 
 // ─── StationsRoot-local layout (mirrors StationPropsBuilder.ts constants) ───
 const LINE_Y = -0.03; // just above the slab top (-0.23)
+// Product rule: no glowing line, bar or wire between accessories. The conduit objects, dashes, shockwave,
+// convergence lines and the [LOCKED] leader are still built and driven (events, state, timers unchanged);
+// only their render visuals are switched off. Flip to true to restore the light strips.
+const SHOW_CONNECTOR_LINES = false;
 // Prep -> Sauce conduit geometry (cm). Wide enough to read from the director camera ~70 cm away.
 const BASE_W = 0.12; // v5: hairline light strips
 const DASH_W = 0.3;
@@ -317,6 +321,14 @@ export class DAGCounterConduit extends BaseScriptComponent {
     return { obj, mat };
   }
 
+  /** Connector segment: same as makeSeg, but its render visual follows SHOW_CONNECTOR_LINES (off = invisible, still driven). */
+  private makeLineSeg(parent: SceneObject, name: string, mesh: RenderMesh): Seg {
+    const seg = this.makeSeg(parent, name, mesh);
+    const rmv = seg.obj.getComponent("Component.RenderMeshVisual") as RenderMeshVisual;
+    if (rmv) rmv.enabled = SHOW_CONNECTOR_LINES;
+    return seg;
+  }
+
   /** Lay a quad along a 2D line: `at` = distance from `a`, `len`/`width` in cm. */
   private placeAlong(seg: Seg, a: vec2, yaw: number, at: number, len: number, width: number, y: number = LINE_Y): void {
     const dx = Math.sin(yaw);
@@ -371,16 +383,16 @@ export class DAGCounterConduit extends BaseScriptComponent {
     }
     this.pLen = acc;
     for (let i = 0; i < this.pPath.length; i++) {
-      const base = this.makeSeg(prepRoot, `Conduit_PrepToSauce_Base_${i}`, this.quadMesh);
+      const base = this.makeLineSeg(prepRoot, `Conduit_PrepToSauce_Base_${i}`, this.quadMesh);
       const leg = this.pPath[i];
       // extend each leg by half the line width so the elbow has no notch
       this.placeAlong(base, leg.a, leg.yaw, 0, leg.len + BASE_W * 0.5, BASE_W);
       this.pBase.push(base);
     }
     for (let i = 0; i < DASH_COUNT; i++) {
-      this.pDashes.push(this.makeSeg(prepRoot, `Conduit_PrepToSauce_Dash_${i}`, this.quadMesh));
+      this.pDashes.push(this.makeLineSeg(prepRoot, `Conduit_PrepToSauce_Dash_${i}`, this.quadMesh));
     }
-    this.pShock = this.makeSeg(prepRoot, "Conduit_PrepToSauce_Shockwave", this.quadMesh);
+    this.pShock = this.makeLineSeg(prepRoot, "Conduit_PrepToSauce_Shockwave", this.quadMesh);
 
     // [LOCKED] node at the saucier end
     this.lockNode = this.makeSeg(prepRoot, "Conduit_LockNode", this.ringMesh);
@@ -408,11 +420,11 @@ export class DAGCounterConduit extends BaseScriptComponent {
       const a = new vec2(s.p.x + ux * startD, s.p.y + uz * startD);
       const len = Math.max(0.5, endD - startD);
       const yaw = Math.atan2(vx, vz);
-      const base = this.makeSeg(convRoot, `Conduit_Convergence_${s.name}`, this.quadMesh);
+      const base = this.makeLineSeg(convRoot, `Conduit_Convergence_${s.name}`, this.quadMesh);
       this.placeAlong(base, a, yaw, 0, len, 0.1);
       const dashes: Seg[] = [];
       for (let i = 0; i < 3; i++) {
-        dashes.push(this.makeSeg(convRoot, `Conduit_Convergence_${s.name}_Dash_${i}`, this.quadMesh));
+        dashes.push(this.makeLineSeg(convRoot, `Conduit_Convergence_${s.name}_Dash_${i}`, this.quadMesh));
       }
       this.convLines.push({ base, dashes, a, b: new vec2(a.x + ux * len, a.y + uz * len), len, yaw });
     }
@@ -441,6 +453,9 @@ export class DAGCounterConduit extends BaseScriptComponent {
       dot.getTransform().setLocalPosition(new vec3(0, -leaderLen + 0.12, -0.02));
       const drr = dot.createComponent(RoundedRectangle.getTypeName()) as RoundedRectangle;
       drr.size = new vec2(0.3, 0.3);
+      // leader line + its board dot are a connector: hidden (objects kept for styling/state)
+      leader.enabled = SHOW_CONNECTOR_LINES;
+      dot.enabled = SHOW_CONNECTOR_LINES;
 
       const bg = global.scene.createSceneObject("Conduit_LockGlass");
       bg.setParent(root);

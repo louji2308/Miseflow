@@ -8,14 +8,21 @@ import { NOT_FOUND_MESSAGE, UniversalDishBlueprint, UniversalDishJsonSchema } fr
 
 const ENDPOINT_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const COMPILE_TIMEOUT_MS = 4500;
+const COMPILE_TIMEOUT_MS = 60000; // live latency varies 10-30 s for a full blueprint
 const COMPILE_MAX_TOKENS = 4500;
+
+// Anthropic rejects the full schema ("compiled grammar is too large"), so cookbookCards are left out and derived from steps.
+const COMPILE_SCHEMA: any = (() => {
+  const props: { [k: string]: any } = {};
+  for (const k in UniversalDishJsonSchema.properties) if (k !== "cookbookCards") props[k] = UniversalDishJsonSchema.properties[k];
+  return { type: "object", properties: props, required: Object.keys(props), additionalProperties: false };
+})();
 
 const COMPILER_SYSTEM_PROMPT = [
   "You are the MiseFlow dish compiler for an AR cooking coach. Convert the user's dish request into ONE UniversalDishBlueprint JSON object.",
   "NOT A DISH: if the request is not a real, cookable dish (gibberish, an object, a place, a person, an instruction, a non-food), return found=false, notFoundMessage=\"" + NOT_FOUND_MESSAGE + "\", and harmless placeholder values for every other field. For a real dish return found=true and notFoundMessage=\"" + NOT_FOUND_MESSAGE + "\".",
   "Rules:",
-  "- Four stations only: PREP (5 vegetable lanes), SKILLET (one protein, sear/saute/toss), SAUCEPOT (two-pour sauce / dum / boil), PLATING. cookbookCards are exactly 4, in the order PREP, SKILLET, SAUCEPOT, PLATING.",
+  "- Four stations only: PREP (5 vegetable lanes), SKILLET (one protein, sear/saute/toss), SAUCEPOT (two-pour sauce / dum / boil), PLATING. Do not output cookbookCards (they are derived from steps), so make sure steps cover PREP, SKILLET, SAUCEPOT and PLATING.",
   "- prepSlots has exactly 5 entries; ingredientAccessNumbers must equal their accessNumber values. Vegetables: 101 red onion/shallot, 102 garlic, 103 herbs, 104 tomato, 105 chilli, 106 cucumber/zucchini, 107 carrot/asparagus, 108 mushroom, 109 ginger/paneer block, 122 bell pepper, 123 broccoli/cauliflower, 124 bok choy/cabbage/spinach, 125 eggplant, 126 scallion, 127 sweet corn/peas, 128 lemon/lime, 129 avocado/mango, 130 beetroot/radish. For anything else use 200-249 and the closest archetype.",
   "- starchAccessNumbers (0-2): 116 rice, 117 ramen/hakka/udon noodles, 118 pasta, 119 potato, 120 dough/flatbread, 121 bread/brioche. spiceAccessNumbers (0-4): 160 whole garam masala, 161 ground spice powders, 162 butter/ghee, 163 grated cheese, 164 cream/coconut/yogurt, 165 oils and umami glazes, 166 lentils/dal/chickpeas.",
   "- Archetypes: prep BULB_ALLIUM, CYLINDER_STALK, SPHERE_CROWN, LEAFY_HERB, CUBED_BLOCK, GRANULAR, GRANULAR_MOUND, STRAND_TANGLE, TUBE_ARRAY, DISC_SHEET, SPICE_CLUSTER, LIQUID_SWIRL; protein FILLET_SLAB, MARBLED_STEAK, MEDALLION_SCALLOP, CUBED_SEAR, DISC_SHEET. Protein accessNumber 140 salmon, 141 ribeye, 142 chicken tikka/marinated cubes/mushroom, 143 tiger prawns, 144 scallops, 145 eggs, 146 paneer, 147 tofu, 148 kofta, 149 bacon, or 250-299 for others.",
@@ -63,6 +70,10 @@ export class RecipeCompilerService extends BaseScriptComponent {
   /** Master switch for the live path. Live still needs a compiler model id and an API key (AiModelConfig). */
   @input
   useLiveAiCompiler: boolean = true;
+
+  /** Chef Director v6: non-preset dishes go to the Cook engine (CookDirectorService). Off = legacy blueprint compiler. */
+  @input
+  useCookEngine: boolean = true;
 
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
   private internetModule: any = null;
@@ -140,6 +151,15 @@ export class RecipeCompilerService extends BaseScriptComponent {
 
       if (idx >= 0) {
         this.applyPreset(idx, "preset");
+        return;
+      }
+
+      // Chef Director (v6): any dish that is not one of the six prebuilt presets is composed by the Cook engine
+      // (PlanLibrary -> live Director -> DISH_NOT_FOUND). The legacy blueprint compiler below is kept as a fallback
+      // when useCookEngine is switched off.
+      if (this.useCookEngine && query.length > 0) {
+        print(`[RecipeCompiler] no preset -> Cook engine (${source}): "${query}"`);
+        this.eventBus.emit("COOK_PLAN_REQUESTED", { query: query, source: source });
         return;
       }
 
@@ -484,7 +504,7 @@ export class RecipeCompilerService extends BaseScriptComponent {
       messages: [{ role: "user", content: [{ type: "text", text: "Dish request: " + query }] }],
       output_config: {
         effort: "medium",
-        format: { type: "json_schema", schema: UniversalDishJsonSchema },
+        format: { type: "json_schema", schema: COMPILE_SCHEMA },
       },
     };
 
@@ -520,10 +540,35 @@ export class RecipeCompilerService extends BaseScriptComponent {
       if (blocks[i] && blocks[i].type === "text" && typeof blocks[i].text === "string") text += blocks[i].text;
     }
     if (text.length === 0) throw new Error("empty reply");
+    let parsed: any;
     try {
-      return JSON.parse(text);
+      parsed = JSON.parse(text);
     } catch (_e) {
       throw new Error("unparseable JSON");
     }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed.cookbookCards)) {
+      parsed.cookbookCards = this.deriveCards(parsed.steps);
+    }
+    return parsed;
+  }
+
+  /** The API grammar limit rejects the full schema, so the 4 briefing cards are derived from the steps (one per station). */
+  private deriveCards(steps: any): any[] {
+    const stations = ["PREP", "SKILLET", "SAUCEPOT", "PLATING"];
+    const list: any[] = Array.isArray(steps) ? steps : [];
+    const cut = (s: any, n: number): string => (typeof s === "string" ? s : "").substring(0, n);
+    return stations.map((st, i) => {
+      let step: any = null;
+      for (let k = 0; k < list.length; k++) if (list[k] && list[k].station === st) { step = list[k]; break; }
+      const why = cut(step && step.whatWhy, 160);
+      const cutAt = why.indexOf(" - ") >= 0 ? why.indexOf(" - ") : why.indexOf(". ") >= 0 ? why.indexOf(". ") : Math.floor(why.length / 2);
+      return {
+        stepNumber: i + 1,
+        stationFocus: st,
+        headline: cut(step && step.title, 28).toUpperCase(),
+        instruction: cut(why.substring(0, cutAt) || why, 75),
+        masteryWhy: cut(why.substring(cutAt).replace(/^[\s.\-]+/, "") || why, 65),
+      };
+    });
   }
 }

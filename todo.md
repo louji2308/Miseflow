@@ -3,9 +3,12 @@
 **Goal: WIN Learn AR with SPECS** (deadline 2026-11-09 14:00 PST). Judges see only the <3 min Lens Studio Preview video.
 **Specs (source of truth):** `implementation_plan.md`, `idea_and_design_v5_universal_ai.md` (repo root) + the user's pasted master catalogue (summarised below). v4 is done and in git (`1ef5283`, pushed).
 
+## v6 Chef Director (started 2026-11-07)
+AI-directed cooking engine replacing the fixed salmon template for AI-typed dishes. Contract files: `Assets/Scripts/Cook/CookPlanSchema.ts` and `Assets/Scripts/Cook/CookWorld.ts`. Plan file: `C:\Users\LOUJAN B\.claude\plans\parsed-tumbling-bird.md`. Acceptance dishes: chicken 65 and chapathi. The six prebuilt dishes stay on the old flow. Deadline 2026-11-09 14:00 PST.
+
 ## HANDOVER – read first if you are a new agent
 - **Exactly three states, in this order:** "Yet to complete" → "In progress" → "Completed". Move a line between sections as work changes; never duplicate; update this file BEFORE and AFTER every task.
-- **Project:** `Miseflow/` (Lens Studio TS). Scripts `Miseflow/Assets/Scripts` (+ `AI/`), tests `Miseflow/Assets/Tests` (LeafIndex.ts; 12 scenarios today).
+- **Project:** `Miseflow/` (Lens Studio TS). Scripts `Miseflow/Assets/Scripts` (+ `AI/`), tests `Miseflow/Assets/Tests` (LeafIndex.ts; 21 scenarios today).
 - **Tools:** Lens Studio ONLY via MCP in **code mode** (`mcp__lens-studio-codemode__execute`, many operations batched in ONE call); normal `mcp__lens-studio__*` only where code mode cannot (e.g. RecompileTypeScriptTool). One agent at a time drives the preview. No pinch/key injection in preview (blocked): trigger via the LEAF interactor / controller `triggerAction`. Short calls, explicit timeouts. Each LEAF run restarts the lens (~3-5 min).
 - **Preview camera pose (re-set before screenshots/recording):** MovePreviewCamera pos (0,25.1,-21.4) lookAt (0,-4.9,-73.4). Camera Object has DeviceTracking so Scene.scene camera transform is ignored.
 - **Hero components are built at startup by `MiseFlowSpatialUI.ensureHeroComponents`** (DiegeticLayer, EdgeBeacon_*, SpatulaGuideRoot, VisionScanReticle, AutoCookController, PlatingFinisher, RecipeCompilerService, SpatialBriefingDeck, VoiceSousChefController, DishBlueprintApplier, PanTossRoll, LadleOrbitalStir …), not saved in Scene.scene – intentional; add new components the same way.
@@ -37,6 +40,13 @@
 
 ## Yet to complete
 
+- [ ] (a) Wire the AI Smith call for unknown ingredient shapes (designed, not wired yet)
+- [ ] (b) Polish pass on frying and rolling motions after reviewing close-up recordings
+- [ ] (c) Record the 1080p/60 video (<3:00) with key 9: chicken 65 then chapathi
+- [ ] (d) Submit on Devpost by 2026-11-09 14:00 PST
+- [ ] (e) Commit + push the v6 checkpoint when the owner asks
+- [ ] Live key check done 2026-11-07: key + claude-sonnet-5-5 verified; compile schema fix (cookbookCards derived) + timeouts 60s/15s uncommitted
+
 ### Dish Studio flow rules (user, strict – latest wording, overrides earlier picker rules where they differ) – applies to P5
 1. **Entry:** tapping the AI Cook / `AI Dish` button switches to a full-view **Dish Studio**: the WHOLE stove/counter/props/pills/HUD are hidden (hidden, not destroyed or reset) and the view shows only two large cards: **Speak** and **Keyboard**. A **small Back button in the corner** returns to the existing setup exactly as it was (NOT a Reset – no state lost).
 2. **The setup never reappears during the flow** – not while typing on the keyboard, not while confirming/identifying, not during the briefing cards. It returns only on Back or after "Let's cook".
@@ -62,7 +72,7 @@
 
 ### Later / optional
 - [ ] User picks Claude models per job (fill `AiModelConfig.ts`) + key in `.env`; one live-call spike in preview
-- [ ] Record 1080p/60 video (<3:00), Devpost text, final review, commit/push when asked
+- [ ] Final review of README and Devpost text after the video (see Yet to complete (c)-(e))
 - [ ] Coach TTS; banner cue text still small; check duplicate-id warning for VisionConfig.ts; at 0.8 cm cuts the knife no longer reaches veg lanes
 
 ---
@@ -74,6 +84,13 @@
 ---
 
 ## Completed
+- [x] [W1] CookPlanSanitizer, CookDirectorService, PlanLibrary (chicken 65, chapathi): done and live-verified in Preview.
+- [x] [W2] ShapeRecipe + builder + irregular chicken recipes: done; gallery passes 3,578 tris for 11 recipes.
+- [x] [W3] CookStage dynamic bench: done.
+- [x] [W4] Cook runtime: ItemState, CookRuntime DAG, 22 actions, step card: done.
+- [x] [W5] Wiring: non-preset dishes route to the Cook engine; Reset restores salmon: done.
+- [x] [W6] 21 LEAF scenarios pass, each run alone (16 original + live-ai-compile, shape-gallery, cook-plan-chicken65, cook-plan-chapathi, cook-plan-generic).
+- [x] 2026-11-07: pushed ca54162; AiModelConfig models set to claude-sonnet-5-5; live compile verified end to end in Preview (lemon tiramisu, gibberish not-found); LiveAiCompileScenario added (id live-ai-compile, passes)
 - [x] **T1 docs** (uncommitted): `README.md` rewritten (v5 flow, run instructions, keys incl. 2 fill portion / 0 reset / 8 cycle dishes, 2:50 storyboard, honest limits), `devpost/design-brief.md` + `Miseflow/devpost/design-brief.md` (identical, hash DB132AAD…161AB), `devpost/submission-draft.md` (Devpost text, honest about stand-ins). No `sk-` strings. Facts checked against code: 16 LEAF ids, key map, 9 kinematic ids, empty model config.
 - [x] **K1b Choreography** (0 TS errors, **16/16 LEAF** each run alone, "completed successfully" in the log; uncommitted): `KineRegistry.ts` (shared helpers + timeline with capped waits), `NoodleLiftToss.ts` (5.7 s tray / 7.3 s basket+tongs), `RiceDumLayer.ts` (dum layer 2.9 s, seal 5.3 s), `WhiskEmulsion.ts` (3.2 s), `PantryChoreographer.ts`; AutoCookController runs dishes 02-06 from steps[] (dish 01's 26-stage list untouched); PlatingFinisher variants: coupe (01, 04), #342 deep bowl nest + protein on top (03, 06), #343 serving handi rice dome + ladle pour (02, 05), steam + DISH_PLATED for all; per-dish pill wording ("STIR PLATED" etc., dish 01 unchanged); scenarios 15 `dish-biryani-cook`, 16 `dish-noodles-cook` (optional chip). Leftovers: no usable screenshot of dish 02 plated (the file shows post-Reset) and none of dish 01 end state; dishes 04/05 checked only in probe runs (all steps done, plated); in manual play steps can complete on their timers; sauce pool reads bright red in dish 03. Note: Lens Studio exited mid-run once; 14 and 16 were rerun.
 - [x] **K1a Step engine** (0 TS errors, **14/14 LEAF** each run alone, "completed successfully" in the log 14:03-14:11; uncommitted): `StepEngine.ts` (580 lines; `getSteps/getCurrentIndex/skipToNext/setEnabled/toggleCard`; boot/Reset dish 01 step 0; studio dish starts at reveal), step card objects `StepCard/StepCardTitle/StepCardBody/StepProgress` near each station pill, `Btn_StepGuide` "Steps" chip in AUTO group (default ON; dock scale 0.86→0.80; `STEP_GUIDE` registered in MiseFlowButtonTrigger), doneness: non-salmon proteins brown with sear progress (never go back), scenario 14 `step-engine`. Completion signals: chop=8th cut; portion=dome 100%; first sauce pour=bowl poured; later pours=DAG sauce COMPLETE; earlier sear/toss=sear<=10 s or flip start; last flip/toss=flipped; ladle/dum/whisk/noodle=request seen else step timer; plating=DISH_PLATED; each step visible >=0.8 s. Fixes: (a) plating moves the dish's own protein onto the active service piece, (b) knife one lane per cut + finer guide marks, (c) ramekins in one inward column, (d) loading chips READY only when asset exists / PLACED after reveal, (e) Reset always re-applies dish 01. Leftovers: skillet/sauce pills still say "SALMON PLATED"/"SAUCE SPOONED" for every dish (K1b must make per-dish wording); sauce/plating card position moved after its screenshot, not re-captured; dish 01 not compared to a pre-change screenshot.

@@ -16,6 +16,10 @@ import { PlatingFinisher } from "./PlatingFinisher";
 import { AutoCookController } from "./AutoCookController";
 import { MiseFlowButtonTrigger } from "./MiseFlowButtonTrigger";
 import { RecipeCompilerService } from "./AI/RecipeCompilerService";
+import { CookDirectorService } from "./Cook/CookDirectorService";
+import { CookStage } from "./Cook/CookStage";
+import { CookRuntime } from "./Cook/CookRuntime";
+import { CookStepCard } from "./Cook/CookStepCard";
 import { getPreset, nextPresetIndex } from "./AI/DishLibraryConfig";
 import { SpatialBriefingDeck } from "./SpatialBriefingDeck";
 import { VoiceSousChefController } from "./VoiceSousChefController";
@@ -279,6 +283,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private visionAction: string = "";
   private visionAccent: vec4 = COLOR_VIOLET_AI;
   private visionKey: string = "";
+  private cookDemoToggle: boolean = false;
   private visionUntil: number = -1;
 
   onAwake(): void {
@@ -350,6 +355,10 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       RiceDumLayer.getTypeName(), // v5 K1b: KINE_RICE_DUM_LAYER (rice layers in the handi, lid seal + dum, steam lift)
       WhiskEmulsion.getTypeName(), // v5 K1b: KINE_WHISK_EMULSION wiring (whisk + sauce gloss)
       PantryChoreographer.getTypeName(), // v5 K1b: per-step pantry actions (butter, spices, powders, drizzle, cream)
+      CookDirectorService.getTypeName(), // v6 Chef Director: dish request -> CookPlan (PlanLibrary, then live AI)
+      CookStage.getTypeName(), // v6: builds the dynamic bench with only the needed items, reveals them one by one
+      CookRuntime.getTypeName(), // v6: runs the plan steps as a DAG (parallel vessels), per-step animations
+      CookStepCard.getTypeName(), // v6: step card + Do step / Auto buttons for Cook-engine dishes
     ]) {
       if (!layer.getComponent(typeName)) layer.createComponent(typeName);
     }
@@ -469,6 +478,15 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       }
       if (key === "8" || key === "Key_8" || (typeof Keys !== "undefined" && (ev as any).key === Keys.Eight)) {
         if (this.manualAllowed("AI Dish")) this.cycleDish();
+        return;
+      }
+      if (key === "9" || key === "Key_9") {
+        // Chef Director demo shortcut: type "chicken 65", then "chapathi", alternately (Cook engine, briefing deck first)
+        if (this.manualAllowed("AI Dish")) {
+          const q = this.cookDemoToggle ? "chapathi" : "chicken 65";
+          this.cookDemoToggle = !this.cookDemoToggle;
+          this.eventBus.emit("DISH_COMPILE_REQUESTED", { query: q, source: "HUD" });
+        }
         return;
       }
       if (key !== "0" && key !== "Key_0" && !this.manualAllowed(`key ${key}`)) return;

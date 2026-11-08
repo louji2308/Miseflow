@@ -17,6 +17,9 @@ import { DishStudioFlowScenario } from "./DishStudioFlowScenario";
 import { StepEngineScenario } from "./StepEngineScenario";
 import { DishBiryaniCookScenario } from "./DishBiryaniCookScenario";
 import { DishNoodlesCookScenario } from "./DishNoodlesCookScenario";
+import { LiveAiCompileScenario } from "./LiveAiCompileScenario";
+import { CookPlanDishScenario } from "./CookPlanDishScenario";
+import { ShapeGalleryScenario } from "./ShapeGalleryScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -89,6 +92,30 @@ export class LeafIndex extends BaseScriptComponent {
       id: "dish-noodles-cook",
       typename: DishNoodlesCookScenario.getTypeName(),
       parameters: { speed: "8", chip: "2" },
+    },
+    {
+      id: "live-ai-compile",
+      typename: LiveAiCompileScenario.getTypeName(),
+    },
+    {
+      id: "cook-plan-chicken65",
+      typename: CookPlanDishScenario.getTypeName(),
+      parameters: { dish: "0", hold: "0" },
+    },
+    {
+      id: "cook-plan-chapathi",
+      typename: CookPlanDishScenario.getTypeName(),
+      parameters: { dish: "1", hold: "0" },
+    },
+    {
+      id: "cook-plan-generic",
+      typename: CookPlanDishScenario.getTypeName(),
+      parameters: { dish: "2", hold: "0" },
+    },
+    {
+      id: "shape-gallery",
+      typename: ShapeGalleryScenario.getTypeName(),
+      parameters: { hold: "0" },
     },
   ];
 

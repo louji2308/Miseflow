@@ -9,17 +9,21 @@
 
 import { ANTHROPIC_API_KEY } from "./LocalSecrets";
 
-export type AiJob = "compiler" | "vision" | "coach" | "synthesizer";
+export type AiJob = "compiler" | "vision" | "coach" | "synthesizer" | "director" | "smith";
 
 export const AiModelConfig: { [job: string]: string } = {
   /** Dish recipe compiler (RecipeCompilerService): free text -> UniversalDishBlueprint JSON. */
-  compiler: "",
+  compiler: "claude-sonnet-5-5",
   /** Sear / doneness vision probe (RapidRouterVisionService). */
-  vision: "",
+  vision: "claude-sonnet-5-5",
   /** Chef coach voice lines (ChefVoiceBanner / CHEF_COACH_SPEAK). */
-  coach: "",
+  coach: "claude-sonnet-5-5",
   /** Page-fault ingredient synthesizer (AssetPageTable, Part 2). */
-  synthesizer: "",
+  synthesizer: "claude-sonnet-5-5",
+  /** Chef Director (Cook/CookDirectorService): dish request -> CookPlan JSON (equipment, tools, ingredients, steps). */
+  director: "claude-sonnet-5-5",
+  /** Shape Smith (Cook ShapeRecipe calls): ingredient / vessel -> small procedural ShapeRecipe JSON. */
+  smith: "claude-sonnet-5-5",
 };
 
 /** Configured model id for a job ("" = not configured). */

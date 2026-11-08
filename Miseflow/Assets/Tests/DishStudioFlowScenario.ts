@@ -111,7 +111,9 @@ export class DishStudioFlowScenario extends Scenario {
     expect(studio.isEditAvailable()).toBe(true);
     expect(studio.getReviewText()).toBe("zzqx blorf");
     await interactor.tapButton("Btn_StudioConfirm");
-    await sleep(700);
+    // with a key present the Chef Director may take a few seconds to say "not a dish"; offline it answers at once
+    for (let i = 0; i < 160 && notFound === 0; i++) await sleep(250);
+    await sleep(300);
     bus.off("DISH_NOT_FOUND", onNf);
     expect(notFound).toBe(1);
     expect(studio.getScreen()).toBe("HOME");

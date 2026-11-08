@@ -2,7 +2,7 @@
 status: approved
 ---
 
-# Design brief: Miseflow AR v5
+# Design brief: Miseflow AR v6
 
 <!-- Spatial Kitchen Flow Orchestrator, v5 universal dish flow on the v4 diegetic rebuild. Ready for CLAD build. -->
 
@@ -14,6 +14,8 @@ Standing at your kitchen counter with messy hands and several tasks underway, yo
 - The chronometer moves from 06:40 to 07:05.
 
 You see what moved, what did not, and why, without touching a screen. v5 adds a second moment: you name a dish and the counter fills with that dish's ingredients and vessels, one item at a time, then the lens walks you through it step by step.
+
+v6 adds the Chef Director. A dish typed in Dish Studio that is not one of the six prebuilt dishes is composed by a Cook engine (`Miseflow/Assets/Scripts/Cook/`). It tries the offline PlanLibrary first (hand-authored plans for "chicken 65" and "chapathi", no network or key), then the live Chef Director call to Anthropic, then "Dish not found. Enter the correct dish name." A plan is 2-6 pieces of equipment, each on its own burner, 0-4 tools, up to 12 ingredients with real shapes, and 4-14 steps. Each step has one of 22 actions or a GENERIC fallback, plus a vessel, a tool, ingredients and `after` links, so two vessels can work at once. The steps appear first as briefing cards, then only the equipment and ingredients that plan needs are built on a dynamic bench and revealed one by one. The six prebuilt dishes keep the original flow.
 
 ## Why it belongs on glasses
 - **Shares your view:** Status lives on the burners, the counter and above each pan, where you are already looking.
@@ -28,7 +30,7 @@ You see what moved, what did not, and why, without touching a screen. v5 adds a 
 - **What the real version would sense:** Task start and complete confirmations plus advisory optical checks of the sear.
 - **Honest stand-ins (kept obvious in the scene):**
   - `VisionScanStandIn` cycles on each AI Vision press: `EXTEND_SEAR` 0.89 (approved), `OPTIMAL_CRUST` 0.94 (approved, triggers the spatula guide), `STEAM_OCCLUDED` 0.41 (rejected by the ProposalGate confidence floor of 0.55, schedule untouched). Every result passes through the real `ProposalGate.evaluate`.
-  - Dish compile and vision can call the Anthropic Messages API through InternetModule, but only if a model id is set in `Assets/Scripts/AI/AiModelConfig.ts` (currently empty, so live AI is off) and `ANTHROPIC_API_KEY` is supplied via `.env` and `tools\sync-env.ps1`. That live path has not been tested end to end. The demo uses offline preset matching.
+  - Dish compile and vision can call the Anthropic Messages API through InternetModule, but only if a model id is set in `Assets/Scripts/AI/AiModelConfig.ts` (currently `claude-sonnet-5-5` for every job) and `ANTHROPIC_API_KEY` is supplied via `.env` and `tools\sync-env.ps1`. The live Chef Director compile was verified in Preview; the live vision call has not been tested end to end. The demo uses offline preset matching and PlanLibrary.
   - A key embedded in a Lens is extractable, so use one for preview or recording only.
   - The prep delay is an injected, deterministic +25s; demo time is accelerated and labelled.
 - **Honest sensing boundaries:** No food-safety thermometry, no mass estimation, no autonomous burner control.
@@ -48,7 +50,7 @@ Diegetic first: status sits on the objects it describes.
 ## Hands and input
 - **Primary input:** SIK pinch on the Director HUD buttons, with hover glow and backing plates.
 - **Dish entry:** Speak (AsrModule one-shot) or Keyboard (AR keyboard via TextInputSystem). Speech shows "Heard" with an Edit step, then Confirm; typed text goes straight to Confirm. Neither works in Preview with SPECS 27 simulation (they show a notice), so the six dish chips and a bus text path stand in for tests.
-- **Preview keys:** `1` step cut, `2` fill portion, `3` transfer, `4` AI vision, `5` +25s drift, `6` 10x warp, `7` Auto Cook, `8` AI dish quick-cycle (cycles prebuilt dishes in the studio), `0` Reset (see the `MiseFlowSpatialUI` key handler).
+- **Preview keys:** `1` step cut, `2` fill portion, `3` transfer, `4` AI vision, `5` +25s drift, `6` 10x warp, `7` Auto Cook, `8` AI dish quick-cycle (cycles prebuilt dishes in the studio), `9` Chef Director demo (`chicken 65`, then `chapathi`, alternately), `0` Reset (see the `MiseFlowSpatialUI` key handler).
 - **Manual fallback:** Every action is reachable by SIK pinch or mouse click in preview and is covered by a LEAF scenario.
 
 ## When things show
@@ -64,16 +66,16 @@ Diegetic first: status sits on the objects it describes.
 ## Done criteria
 Checked in Lens Studio's preview:
 1. **0 TypeScript errors** on compile.
-2. **16 LEAF scenarios pass, each run alone:** the 6 original (station setup, metric blade stepping, portion dome, transfer arc, time-warp plating, prep-drift resolver), `gaze-wayfinding-beacon`, `proposal-gate-rejection`, `spatula-flip-guide`, `auto-cook-full-flow`, `universal-dish-page-table`, `multi-dish-auto-cook`, `dish-studio-flow`, `step-engine`, `dish-biryani-cook`, `dish-noodles-cook`.
+2. **21 LEAF scenarios pass, each run alone:** the 6 original (station setup, metric blade stepping, portion dome, transfer arc, time-warp plating, prep-drift resolver), `gaze-wayfinding-beacon`, `proposal-gate-rejection`, `spatula-flip-guide`, `auto-cook-full-flow`, `universal-dish-page-table`, `multi-dish-auto-cook`, `dish-studio-flow`, `step-engine`, `dish-biryani-cook`, `dish-noodles-cook`, `live-ai-compile`, `shape-gallery`, `cook-plan-chicken65`, `cook-plan-chapathi`, `cook-plan-generic`.
 3. **Prep Drift Resolver moment is visible:** amber conduit pulse, saucier ghost arc, skillet Heat Guard ring, chronometer 06:40 to 07:05.
 4. **Gate honesty:** The 0.41 `STEAM_OCCLUDED` scan is rejected and the schedule does not change.
 5. **Dish Studio flow works end to end** (via chips and the text path): Back restores the setup, an unknown dish shows the not-found message, Let's cook reveals props one by one, and the dish cooks from its steps.
-6. **A 2:50 recording at 1080p** in five acts: hook on salmon, Dish Studio to biryani, step-by-step cooking, drift moment, Auto Cook finish with LEAF 16/16.
+6. **A 2:50 recording at 1080p** in five acts: hook on salmon, Dish Studio to biryani, step-by-step cooking, drift moment, Auto Cook finish with LEAF 21/21.
 
 ## Out of scope
 - Articulated hand rig (SIK pinch only).
 - Real camera sensing of the food (vision is a stand-in).
-- A tested live Anthropic call (the path exists but is untested and off by default).
+- Live vision calls (the Chef Director compile is verified in Preview; the vision call is untested).
 - Real pan temperature or food-safety claims from RGB.
 - Mass estimation from uncalibrated depth.
 - Autonomous control of stove burners.
@@ -84,8 +86,9 @@ Checked in Lens Studio's preview:
 - **Camera Object has DeviceTracking,** so its scene transform is ignored at runtime. Pose comes from the preview camera, not the scene.
 - **`DiegeticLayer` and hero components are built at startup** by `MiseFlowSpatialUI.ensureHeroComponents`, so they will not appear in the scene hierarchy until the lens runs.
 - **AR keyboard and ASR voice are untested in Preview** (SPECS 27 simulation shows a notice).
-- **Live AI untested and extractable key:** model ids are empty, so live AI is off; any key in a Lens can be extracted.
+- **Live AI and extractable key:** the Chef Director compile is verified in Preview with `claude-sonnet-5-5`; any key in a Lens can be extracted, so keep keys to preview only.
 - **Known visual gaps:** old dish-01 vegetables exceed 400 triangles; the sauce pool is bright red in dish 03; in manual play some steps complete on timers; a few screenshots are missing.
+- **v6 limits:** a live Director call takes 10-35 s per new dish; unknown ingredients are built from role, colour and shape hints (the per-ingredient AI shape call is not wired); only a handful of protein shapes exist besides the irregular chicken; the motions were checked in Preview screenshots, not on a device.
 - **Narrow field of view (37 x 32 deg):** Mitigated by `GazeEdgeBeacon`, compact pills and a layout inside the 1 m zone.
 - **Additive display:** Black renders as transparent. Use light, high-luminance tokens over dark backing plates.
 - **Physical feel unproven:** Hand fatigue over a hot stove needs real hardware.

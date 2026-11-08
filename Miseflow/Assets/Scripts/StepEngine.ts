@@ -122,6 +122,8 @@ export class StepEngine extends BaseScriptComponent {
   // card
   private cardVisible: boolean = true;
   private studioOpen: boolean = false;
+  /** A Cook-engine dish owns the scene: the legacy step card stays hidden. */
+  private cookActive: boolean = false;
   private card: SceneObject | null = null;
   private cardGlass: KitGlass | null = null;
   private glasses: KitGlass[] = [];
@@ -146,7 +148,13 @@ export class StepEngine extends BaseScriptComponent {
     this.createEvent("OnStartEvent").bind(() => {
       this.resolve();
       this.buildCard();
-      this.listen("RESET_REQUESTED", () => this.onReset());
+      // Chef Director (Cook engine) dishes bring their own step card: the legacy salmon-era card stays hidden meanwhile
+      this.listen("COOK_PLAN_READY", () => (this.cookActive = true));
+      this.listen("COOK_EXIT", () => (this.cookActive = false));
+      this.listen("RESET_REQUESTED", () => {
+        this.cookActive = false;
+        this.onReset();
+      });
       this.listen("DISH_BLUEPRINT_APPLIED", (d?: any) => this.onApplied(d));
       this.listen("DISH_REVEALED", (d?: any) => this.onRevealed(d));
       this.listen("STUDIO_STATE_CHANGED", (d?: any) => (this.studioOpen = !!d && !!d.open));
@@ -462,7 +470,7 @@ export class StepEngine extends BaseScriptComponent {
   }
 
   private wantCard(): boolean {
-    return this.enabledFlag && this.cardVisible && !this.studioOpen && this.index >= 0 && this.index < this.steps.length;
+    return this.enabledFlag && this.cardVisible && !this.studioOpen && !this.cookActive && this.index >= 0 && this.index < this.steps.length;
   }
 
   private applyContent(i: number): void {

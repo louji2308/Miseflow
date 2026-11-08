@@ -44,3 +44,4 @@
       {}
   InputLines:
     - // @input bool useLiveAiCompiler = true
+    - // @input bool useCookEngine = true
