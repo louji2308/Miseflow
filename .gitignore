@@ -2,3 +2,6 @@
 .env
 .env.*
 !.env.example
+
+# .claude/skills/plan-lens is a symlink to the absolute local path of .agents/skills/plan-lens (the real files are tracked there)
+.claude/
