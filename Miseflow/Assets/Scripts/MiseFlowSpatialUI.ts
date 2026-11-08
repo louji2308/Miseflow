@@ -20,6 +20,7 @@ import { CookDirectorService } from "./Cook/CookDirectorService";
 import { CookStage } from "./Cook/CookStage";
 import { CookRuntime } from "./Cook/CookRuntime";
 import { CookStepCard } from "./Cook/CookStepCard";
+import { CookItemLabels } from "./Cook/CookItemLabels";
 import { getPreset, nextPresetIndex } from "./AI/DishLibraryConfig";
 import { SpatialBriefingDeck } from "./SpatialBriefingDeck";
 import { VoiceSousChefController } from "./VoiceSousChefController";
@@ -359,6 +360,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       CookStage.getTypeName(), // v6: builds the dynamic bench with only the needed items, reveals them one by one
       CookRuntime.getTypeName(), // v6: runs the plan steps as a DAG (parallel vessels), per-step animations
       CookStepCard.getTypeName(), // v6: step card + Do step / Auto buttons for Cook-engine dishes
+      CookItemLabels.getTypeName(), // v6: name tags for only the current step's vessel, tool and ingredients
     ]) {
       if (!layer.getComponent(typeName)) layer.createComponent(typeName);
     }

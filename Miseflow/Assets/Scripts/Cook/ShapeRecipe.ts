@@ -334,142 +334,152 @@ export const SHAPE_RECIPE_PROMPT_HINT =
 
 // ───────────────────────────── hand-authored recipes ─────────────────────────────
 
-/** 12 irregular fried-chicken chunks (Chicken 65): lobed, bumpy, varied size, split pieces, piled. Never cubes. */
+/** 12 irregular fried-chicken chunks (Chicken 65): lobed, bumpy, varied size, split pieces, piled. Never cubes.
+ *  Raw = marinated blush; done = glossy chilli-red / golden glaze (low roughness reads as a crisp lacquered crust). */
 export const IRREGULAR_CHICKEN_CHUNKS: ShapeRecipe = {
   name: "ChickenChunks",
-  rough: 0.62,
+  rough: 0.5,
   metal: 0.0,
-  palette: { body: [0.95, 0.74, 0.58], doneBody: [0.86, 0.36, 0.14] },
+  palette: { body: [0.95, 0.72, 0.58], doneBody: [0.84, 0.36, 0.12] },
   ops: [
     {
-      op: "ELLIPSOID", slot: "body", pos: [0, 1.05, 0], rot: [0, 40, 35], scale: [1.55, 1.0, 1.2],
-      segs: 6, lobes: 3, amp: 0.3,
-      scatter: { count: 12, jitter: 4.6, seed: 65, pattern: "DISC", split: true, heap: 1.1 },
+      op: "ELLIPSOID", slot: "body", pos: [0, 1.0, 0], rot: [0, 48, 40], scale: [1.55, 0.95, 1.18],
+      segs: 6, lobes: 2, amp: 0.27,
+      scatter: { count: 12, jitter: 4.6, seed: 65, pattern: "DISC", split: true, heap: 1.15 },
     },
   ],
 };
 
-/** Wooden rolling pin (chapathi): 26 cm barrel + two turned handles, lying along X. */
+/** Two-tone rolling pin (chapathi): 26 cm pale maple barrel with chamfered ends + walnut turned handles
+ *  (neck, bead, knob), lying along X. */
 export const ROLLING_PIN: ShapeRecipe = {
   name: "RollingPin",
-  rough: 0.55,
-  palette: { body: [0.86, 0.66, 0.44], accent: [0.66, 0.44, 0.26] },
+  rough: 0.45,
+  palette: { body: [0.90, 0.74, 0.52], accent: [0.46, 0.28, 0.17] },
   ops: [
-    { op: "LATHE", slot: "body", pos: [0, 2.25, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 12, pts: [0, -13, 1.85, -13, 2.15, -12.3, 2.25, -6, 2.25, 6, 2.15, 12.3, 1.85, 13, 0, 13] },
-    { op: "LATHE", slot: "accent", pos: [-15.5, 2.25, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 10, pts: [0, -3.2, 1.05, -3.2, 1.2, -2.2, 0.95, 0.4, 0.8, 2.6, 0.7, 2.6] },
-    { op: "LATHE", slot: "accent", pos: [15.5, 2.25, 0], rot: [0, 0, -90], scale: [1, 1, 1], segs: 10, pts: [0, -3.2, 1.05, -3.2, 1.2, -2.2, 0.95, 0.4, 0.8, 2.6, 0.7, 2.6] },
+    { op: "LATHE", slot: "body", pos: [0, 2.25, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 12, pts: [0, -13, 1.9, -13, 2.18, -12.65, 2.25, -11.9, 2.25, 11.9, 2.18, 12.65, 1.9, 13, 0, 13] },
+    { op: "LATHE", slot: "accent", pos: [-15.5, 2.25, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 8, pts: [0, -3.2, 1.15, -3.2, 1.2, -0.7, 0.92, -0.35, 1.36, 0.05, 1.02, 0.45, 1.06, 1.9, 1.26, 2.45, 0, 2.95] },
+    { op: "LATHE", slot: "accent", pos: [15.5, 2.25, 0], rot: [0, 0, -90], scale: [1, 1, 1], segs: 8, pts: [0, -3.2, 1.15, -3.2, 1.2, -0.7, 0.92, -0.35, 1.36, 0.05, 1.02, 0.45, 1.06, 1.9, 1.26, 2.45, 0, 2.95] },
   ],
 };
 
-/** Wooden chopping / rolling board 30 x 20 cm with a handle tab, hang hole and juice groove. */
+/** Walnut chopping / rolling board 30 x 20 cm: stepped (chamfered) top and bottom edges, paler oiled top, juice
+ *  groove, handle tab with a hang hole and a leather loop. */
 export const WOODEN_BOARD: ShapeRecipe = {
   name: "WoodenBoard",
-  rough: 0.6,
-  palette: { body: [0.84, 0.62, 0.40], accent: [0.92, 0.74, 0.52], detail: [0.62, 0.42, 0.24] },
+  rough: 0.5,
+  palette: { body: [0.52, 0.33, 0.20], accent: [0.66, 0.46, 0.29], detail: [0.34, 0.20, 0.12] },
   ops: [
-    { op: "BOX", slot: "body", pos: [0, 1.0, 0], scale: [13, 1.0, 10] },
-    { op: "BOX", slot: "body", pos: [15.4, 0.95, 0], scale: [2.6, 0.95, 4.2] },
-    { op: "BOX", slot: "accent", pos: [0, 2.01, 0], scale: [12.6, 0.012, 9.6] },
-    { op: "TORUS", slot: "detail", pos: [0, 2.04, 0], scale: [11.2, 1.0, 8.2], segs: 18, amp: 0.03 },
-    { op: "TORUS", slot: "detail", pos: [16.2, 1.92, 0], scale: [1.0, 1.2, 1.0], segs: 12, amp: 0.22 },
+    { op: "BOX", slot: "body", pos: [0, 1.0, 0], scale: [13, 0.8, 10] },
+    { op: "BOX", slot: "body", pos: [0, 0.1, 0], scale: [12.7, 0.1, 9.7] },
+    { op: "BOX", slot: "body", pos: [15.3, 1.0, 0], scale: [2.5, 0.8, 4.0] },
+    { op: "BOX", slot: "accent", pos: [0, 1.9, 0], scale: [12.75, 0.1, 9.75] },
+    { op: "BOX", slot: "accent", pos: [15.2, 1.9, 0], scale: [2.35, 0.1, 3.75] },
+    { op: "TORUS", slot: "detail", pos: [0, 2.0, 0], scale: [11.2, 1.0, 8.2], segs: 18, amp: 0.028 },
+    { op: "TORUS", slot: "detail", pos: [16.2, 1.98, 0], scale: [0.95, 1.0, 0.95], segs: 10, amp: 0.24 },
+    { op: "TORUS", slot: "detail", pos: [18.3, 1.05, 0], scale: [2.0, 1.4, 1.05], segs: 12, amp: 0.15 },
   ],
 };
 
-/** Curry-leaf sprig: curved stem + 10 glossy alternate leaves. */
+/** Curry-leaf sprig: curved stem + 10 glossy, slender alternate leaves. */
 export const CURRY_LEAF_SPRIG: ShapeRecipe = {
   name: "CurryLeafSprig",
-  rough: 0.3,
-  palette: { body: [0.30, 0.68, 0.30], accent: [0.52, 0.62, 0.30] },
+  rough: 0.24,
+  palette: { body: [0.18, 0.50, 0.17], accent: [0.46, 0.56, 0.24] },
   ops: [
     { op: "SWEEP", slot: "accent", pos: [0, 0.35, 0], scale: [1, 1, 1], segs: 4, pts: [-5.6, 0, 0, 0.12, -2, 0.15, 0.2, 0.1, 2, 0.15, 0.1, 0.08, 5.6, 0, -0.3, 0.06] },
-    { op: "ELLIPSOID", slot: "body", pos: [0, 0.4, 0], rot: [62, 0, 0], scale: [1.35, 0.1, 0.55], segs: 6, lobes: 2, amp: 0.06, scatter: { count: 10, jitter: 4.8, seed: 11, pattern: "LINE" } },
+    { op: "ELLIPSOID", slot: "body", pos: [0, 0.42, 0], rot: [58, 0, 0], scale: [1.4, 0.09, 0.5], segs: 6, lobes: 2, amp: 0.08, scatter: { count: 10, jitter: 4.8, seed: 11, pattern: "LINE" } },
   ],
 };
 
-/** Lemon wedge: an eighth of a lemon, rind + pale flesh faces. */
+/** Lemon wedge: an eighth of a lemon - glossy rind boat, white pith band, juicy flesh with a centre line and
+ *  segment membranes. */
 export const LEMON_WEDGE: ShapeRecipe = {
   name: "LemonWedge",
-  rough: 0.35,
-  palette: { body: [1.0, 0.86, 0.22], accent: [1.0, 0.96, 0.66], detail: [0.98, 0.92, 0.70] },
+  rough: 0.28,
+  palette: { body: [1.0, 0.84, 0.12], accent: [1.0, 0.92, 0.5], detail: [0.99, 0.97, 0.86] },
   ops: [
-    // rind: boat-shaped half shell (dome flipped by pitch 180), rind side down, long axis X
+    // rind: boat-shaped half shell (flipped by pitch 180), rind side down, long axis X
     { op: "LATHE", slot: "body", pos: [0, 1.4, 0], rot: [0, 180, 0], scale: [3.3, 1.4, 1.05], segs: 12, pts: [1, 0, 0.93, 0.4, 0.72, 0.74, 0.4, 0.94, 0, 1] },
-    // flesh: slightly domed cut face + pale pith line + segment membranes
-    { op: "DISC", slot: "accent", pos: [0, 1.41, 0], scale: [3.15, 1, 0.98], segs: 14, amp: 0.18 },
-    { op: "BOX", slot: "detail", pos: [0, 1.6, 0], scale: [2.7, 0.02, 0.06] },
-    { op: "BOX", slot: "detail", pos: [0, 1.58, 0], scale: [0.04, 0.02, 0.8], scatter: { count: 4, jitter: 2.0, seed: 5, pattern: "LINE" } },
+    // pith band (flat, full width) under the slightly smaller, domed flesh face
+    { op: "DISC", slot: "detail", pos: [0, 1.405, 0], scale: [3.28, 1, 1.04], segs: 14 },
+    { op: "DISC", slot: "accent", pos: [0, 1.43, 0], scale: [3.0, 1, 0.86], segs: 14, amp: 0.2 },
+    { op: "BOX", slot: "detail", pos: [0, 1.62, 0], scale: [2.6, 0.015, 0.035] },
+    { op: "BOX", slot: "detail", pos: [0, 1.6, 0], scale: [0.025, 0.015, 0.62], scatter: { count: 4, jitter: 1.9, seed: 5, pattern: "LINE" } },
   ],
 };
 
-/** Shallow flour dish (atta / cornflour) with a soft heaped flour mound. */
+/** Shallow ivory dish (atta / cornflour) with a soft, peaked flour mound. */
 export const FLOUR_DISH: ShapeRecipe = {
   name: "FlourDish",
-  rough: 0.3,
-  palette: { body: [0.88, 0.90, 0.94], accent: [0.98, 0.95, 0.86] },
+  rough: 0.2,
+  palette: { body: [0.95, 0.93, 0.88], accent: [0.98, 0.95, 0.86] },
   vessel: { profile: [[6.5, 0], [8.5, 0.6], [9.5, 2.2], [10, 3.0]], segs: 16, handle: "NONE", floor: true },
   ops: [
-    { op: "ELLIPSOID", slot: "accent", pos: [0, 0.9, 0], scale: [7.2, 1.6, 7.0], segs: 10, lobes: 2, amp: 0.08 },
+    { op: "LATHE", slot: "accent", pos: [0, 0, 0], scale: [1, 1, 1], segs: 13, lobes: 3, amp: 0.05, pts: [0, 0.63, 6.0, 0.63, 7.3, 1.3, 6.0, 1.95, 3.6, 2.65, 1.2, 3.05, 0, 3.15] },
   ],
 };
 
-/** Smooth dough ball (chapathi portion), slightly squashed with a soft crease. */
+/** Smooth dough ball (chapathi portion): soft squashed sphere, gentle lobes, a pinched seam on top. */
 export const DOUGH_BALL: ShapeRecipe = {
   name: "DoughBall",
-  rough: 0.7,
-  palette: { body: [0.98, 0.90, 0.72], detail: [0.90, 0.80, 0.60] },
+  rough: 0.72,
+  palette: { body: [0.97, 0.88, 0.68], detail: [0.90, 0.79, 0.58] },
   ops: [
-    { op: "ELLIPSOID", slot: "body", pos: [0, 2.2, 0], scale: [3.0, 2.3, 3.0], segs: 14, lobes: 2, amp: 0.05 },
-    { op: "TORUS", slot: "detail", pos: [0, 3.9, 0], rot: [0, 0, 0], scale: [0.8, 0.5, 0.8], segs: 9, amp: 0.12 },
+    { op: "ELLIPSOID", slot: "body", pos: [0, 2.15, 0], scale: [3.05, 2.2, 3.0], segs: 16, lobes: 3, amp: 0.04 },
+    { op: "TORUS", slot: "detail", pos: [0, 4.22, 0], rot: [20, 0, 0], scale: [0.75, 0.45, 0.6], segs: 9, amp: 0.13 },
   ],
 };
 
-/** Rolled flatbread (chapathi / roti), ~18 cm disc with browned blister spots. */
+/** Rolled flatbread (chapathi / roti), ~18 cm, soft wavy edge, puffed blisters and browned char spots. */
 export const FLATBREAD_DISC: ShapeRecipe = {
   name: "FlatbreadDisc",
-  rough: 0.75,
-  palette: { body: [0.98, 0.88, 0.66], detail: [0.80, 0.52, 0.26], doneBody: [0.94, 0.76, 0.48] },
+  rough: 0.72,
+  palette: { body: [0.97, 0.87, 0.64], accent: [0.96, 0.84, 0.60], detail: [0.80, 0.55, 0.30], doneBody: [0.93, 0.74, 0.46] },
   ops: [
-    { op: "LATHE", slot: "body", pos: [0, 0, 0], scale: [9, 1, 9], segs: 20, lobes: 5, amp: 0.025, pts: [0, 0, 0.94, 0, 1, 0.12, 0.96, 0.3, 0, 0.36] },
-    { op: "DISC", slot: "detail", pos: [0, 0.37, 0], scale: [0.7, 1, 0.55], segs: 6, amp: 0.03, scatter: { count: 12, jitter: 6.8, seed: 9, pattern: "DISC" } },
-    { op: "DISC", slot: "detail", pos: [0, 0.37, 0], scale: [0.4, 1, 0.32], segs: 5, amp: 0.02, scatter: { count: 10, jitter: 7.8, seed: 21, pattern: "DISC" } },
+    { op: "LATHE", slot: "body", pos: [0, 0, 0], scale: [9, 1, 9], segs: 16, lobes: 5, amp: 0.025, pts: [0, 0, 0.94, 0, 1, 0.12, 0.96, 0.3, 0.7, 0.4, 0, 0.44] },
+    { op: "DOME", slot: "accent", pos: [0, 0.4, 0], scale: [1.1, 0.2, 0.85], segs: 6, scatter: { count: 5, jitter: 5.0, seed: 31, pattern: "DISC" } },
+    { op: "DISC", slot: "detail", pos: [0, 0.455, 0], scale: [0.48, 1, 0.38], segs: 6, amp: 0.02, scatter: { count: 10, jitter: 6.0, seed: 9, pattern: "DISC" } },
+    { op: "DISC", slot: "detail", pos: [0, 0.455, 0], scale: [0.26, 1, 0.22], segs: 5, amp: 0.02, scatter: { count: 8, jitter: 6.4, seed: 21, pattern: "DISC" } },
   ],
 };
 
-/** Perforated spider skimmer (jhara): flat mesh disc + long handle. */
+/** Perforated spider skimmer (jhara): shallow brushed-steel dish with punched holes, rolled rim, steel shank and
+ *  walnut grip. */
 export const SKIMMER: ShapeRecipe = {
   name: "Skimmer",
   rough: 0.22,
-  metal: 0.7,
-  palette: { body: [0.86, 0.88, 0.92], accent: [0.62, 0.42, 0.24], detail: [0.70, 0.74, 0.80] },
+  metal: 0.8,
+  palette: { body: [0.84, 0.86, 0.89], accent: [0.44, 0.27, 0.16], detail: [0.24, 0.24, 0.26] },
   ops: [
-    { op: "LATHE", slot: "body", pos: [0, 0.4, 0], scale: [5, 1, 5], segs: 16, pts: [0, 0, 0.7, 0.05, 1, 0.35, 0.96, 0.42] },
-    { op: "TORUS", slot: "detail", pos: [0, 0.42, 0], scale: [3.0, 1, 3.0], segs: 15, amp: 0.025 },
-    { op: "TORUS", slot: "detail", pos: [0, 0.3, 0], scale: [1.6, 1, 1.6], segs: 12, amp: 0.04 },
-    { op: "SWEEP", slot: "body", pos: [0, 0, 0], scale: [1, 1, 1], segs: 5, pts: [4.8, 0.8, 0, 0.22, 9, 2.2, 0, 0.2, 16, 3.4, 0, 0.2] },
-    { op: "SWEEP", slot: "accent", pos: [0, 0, 0], scale: [1, 1, 1], segs: 6, pts: [16, 3.4, 0, 0.42, 22, 4.4, 0, 0.5, 27, 5.1, 0, 0.42] },
+    { op: "LATHE", slot: "body", pos: [0, 0.4, 0], scale: [5, 1, 5], segs: 16, pts: [0.96, 0.42, 1, 0.35, 0.7, 0.05, 0, 0] },
+    { op: "TORUS", slot: "body", pos: [0, 0.79, 0], scale: [4.92, 1, 4.92], segs: 16, amp: 0.022 },
+    { op: "DISC", slot: "detail", pos: [0, 0.465, 0], scale: [0.2, 1, 0.2], segs: 5, scatter: { count: 14, jitter: 2.9, seed: 3, pattern: "DISC" } },
+    { op: "SWEEP", slot: "body", pos: [0, 0, 0], scale: [1, 1, 1], segs: 6, pts: [4.8, 0.8, 0, 0.22, 9, 2.2, 0, 0.2, 16, 3.4, 0, 0.21] },
+    { op: "SWEEP", slot: "accent", pos: [0, 0, 0], scale: [1, 1, 1], segs: 8, pts: [16, 3.4, 0, 0.4, 19, 3.9, 0, 0.5, 23.5, 4.6, 0, 0.53, 27, 5.1, 0, 0.42] },
   ],
 };
 
-/** Wooden spoon: oval shallow bowl + tapered handle along +X. */
+/** Olive-wood spoon: oval shallow bowl + slim neck and a tapered, rounded handle along +X. */
 export const WOODEN_SPOON: ShapeRecipe = {
   name: "WoodenSpoon",
-  rough: 0.58,
-  palette: { body: [0.86, 0.64, 0.40], accent: [0.74, 0.52, 0.30] },
+  rough: 0.5,
+  palette: { body: [0.84, 0.64, 0.42], accent: [0.80, 0.59, 0.37] },
   ops: [
-    { op: "LATHE", slot: "body", pos: [0, 0.5, 0], scale: [3.2, 1, 2.2], segs: 14, pts: [0, 0, 0.6, 0.04, 0.95, 0.3, 1, 0.55, 0.9, 0.62, 0.55, 0.3, 0, 0.26] },
-    { op: "SWEEP", slot: "accent", pos: [0, 0, 0], scale: [1, 1, 1], segs: 6, pts: [2.9, 1.0, 0, 0.42, 7, 1.6, 0, 0.36, 14, 2.4, 0, 0.42, 22, 3.0, 0, 0.5, 26, 3.2, 0, 0.42] },
+    { op: "LATHE", slot: "body", pos: [0, 0.5, 0], scale: [3.2, 1, 2.2], segs: 16, pts: [0, 0, 0.6, 0.04, 0.95, 0.3, 1, 0.55, 0.9, 0.62, 0.55, 0.3, 0, 0.26] },
+    { op: "SWEEP", slot: "accent", pos: [0, 0, 0], scale: [1, 1, 1], segs: 8, pts: [2.9, 1.0, 0, 0.36, 5.5, 1.4, 0, 0.27, 10, 2.0, 0, 0.36, 18, 2.75, 0, 0.47, 24.5, 3.15, 0, 0.5, 26, 3.2, 0, 0.36] },
   ],
 };
 
-/** Pastry / ghee brush: wooden handle, steel ferrule, soft bristle tuft. */
+/** Pastry / ghee brush: walnut handle, brass ferrule, natural bristle tuft. */
 export const BRUSH: ShapeRecipe = {
   name: "Brush",
-  rough: 0.5,
-  palette: { body: [0.84, 0.62, 0.38], accent: [0.86, 0.88, 0.92], detail: [0.98, 0.92, 0.74] },
+  rough: 0.45,
+  palette: { body: [0.46, 0.29, 0.17], accent: [0.92, 0.76, 0.42], detail: [0.96, 0.89, 0.70] },
   ops: [
     { op: "SWEEP", slot: "body", pos: [0, 0, 0], scale: [1, 1, 1], segs: 8, pts: [5.5, 0.9, 0, 0.55, 10, 1.1, 0, 0.62, 15, 1.3, 0, 0.52, 18, 1.35, 0, 0.4] },
-    { op: "LATHE", slot: "accent", pos: [3.6, 0.85, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 10, pts: [0, -2.0, 0.66, -2.0, 0.7, 0, 0.62, 2.0, 0, 2.0] },
-    { op: "ELLIPSOID", slot: "detail", pos: [0.4, 0.75, 0], rot: [0, 0, 0], scale: [2.4, 0.55, 1.1], segs: 10, lobes: 4, amp: 0.1 },
+    { op: "LATHE", slot: "accent", pos: [3.6, 0.85, 0], rot: [0, 0, 90], scale: [1, 1, 1], segs: 10, pts: [0, -2.0, 0.66, -2.0, 0.72, -1.6, 0.7, 0, 0.62, 2.0, 0, 2.0] },
+    { op: "ELLIPSOID", slot: "detail", pos: [0.4, 0.75, 0], rot: [0, 0, 0], scale: [2.4, 0.55, 1.1], segs: 10, lobes: 6, amp: 0.1 },
   ],
 };
 

@@ -360,6 +360,7 @@ export class CookRuntime extends BaseScriptComponent {
         print(`[Cook:${s.action}:${s.id}] ${msg}`);
       },
     };
+    this.applyForms(s, its, sig, ctx.dur);
     // heat follows the step on burner vessels (a burner step with heat OFF turns it off)
     if (eq && this.onBurner(eq.id)) {
       const h = String(s.heat || "").toUpperCase();
@@ -389,6 +390,31 @@ export class CookRuntime extends BaseScriptComponent {
     return true;
   }
 
+  /**
+   * Shape transformations of vegetables: CUT swaps whole -> cut pieces halfway through the chopping; a vegetable that is
+   * used by any other step is never left whole (it is cut when the step starts); in a paste / puree dish the pieces
+   * turn into a paste halfway through the first heating / mixing step.
+   */
+  private applyForms(s: CookStep, its: ItemHandle[], sig: CookSignal, dur: number): void {
+    const act = String(s.action).toUpperCase();
+    const pasteActs = ["SIMMER", "BOIL", "MIX", "WHISK", "SAUTE_TOSS", "SHALLOW_FRY", "TEMPER", "STEAM_DUM"];
+    const later = (sec: number, fn: () => void): void => {
+      this.tweener.run(sig, Math.max(0, sec) / Math.max(0.05, this.speed)).then(fn, () => undefined);
+    };
+    for (const it of its) {
+      if (!it.setForm || !it.hasForm) continue;
+      const cur = it.form || "whole";
+      if (act === "CUT") {
+        if (cur === "whole" && it.hasForm("cut")) later(dur * 0.5, () => it.setForm && it.setForm("cut"));
+        continue;
+      }
+      if (cur === "whole" && it.hasForm("cut")) it.setForm("cut");
+      if (pasteActs.indexOf(act) >= 0 && it.hasForm("paste") && (it.form || "whole") !== "paste") {
+        later(dur * 0.5, () => it.setForm && it.setForm("paste"));
+      }
+    }
+  }
+
   private onBurner(eqId: string): boolean {
     const plan = this.world ? this.world.plan : null;
     if (!plan || !plan.equipment) return false;
@@ -404,11 +430,22 @@ export class CookRuntime extends BaseScriptComponent {
       print(`[CookRuntime] action ${rec.step.action} (${rec.step.id}) error: ${err}${err && err.stack ? "\n" + err.stack : ""}`);
     }
     this.cleanupRun(rec);
+    if (String(rec.step.action).toUpperCase() === "CUT" && this.world) {
+      for (const id of rec.step.ingredientIds || []) {
+        const it = this.world.items[id];
+        if (it && it.setForm && it.hasForm && it.hasForm("cut") && (it.form || "whole") === "whole") it.setForm("cut");
+      }
+    }
     // plated food stays visible (PLATE without ingredients plates the whole dish)
     if (String(rec.step.action).toUpperCase() === "PLATE" && this.world) {
       const w = this.world;
       const ids = Array.isArray(rec.step.ingredientIds) && rec.step.ingredientIds.length > 0 ? rec.step.ingredientIds : Object.keys(w.items);
-      this.showItems(ids.map((id) => w.items[id]).filter((it) => !!it));
+      const plated = ids.map((id) => w.items[id]).filter((it) => !!it);
+      this.showItems(plated);
+      // nothing plated stays a whole vegetable that the recipe cut or cooked down
+      for (const it of plated) {
+        if (it.setForm && it.hasForm && (it.form || "whole") === "whole" && it.hasForm("cut")) it.setForm(it.hasForm("paste") ? "paste" : "cut");
+      }
     }
     this.status[rec.step.id] = "dwell";
   }

@@ -24,11 +24,12 @@
   VersionPatch: 0
   VersionPrerelease: ""
   UpdateOrder: 0
-  ComponentUid: 00000000-0000-0000-0000-000000000000
+  ComponentUid: ed4cf230-d0ba-4b5a-beac-1420687b87a2
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
-    {}
+    autoDefault: false
+    speed: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -38,8 +39,8 @@
   Attachments:
     []
   DefaultScriptInputs:
-    -
-      {}
+    - speed: !<float> 1.000000
+      autoDefault: false
   ScriptTypes:
     -
       {}

@@ -42,12 +42,13 @@ function mat(key: string): Material {
   if (matCache[key]) return matCache[key];
   let m: Material;
   switch (key) {
-    case "steel": m = glow(makePbrMaterial(0.86, 0.88, 0.92, 0.7, 0.26), 0.09, 0.09, 0.1); break;
+    case "steel": m = glow(makePbrMaterial(0.80, 0.82, 0.85, 0.86, 0.3), 0.05, 0.05, 0.055); break; // brushed stainless
+    case "brass": m = glow(makePbrMaterial(0.92, 0.74, 0.40, 0.9, 0.24), 0.06, 0.045, 0.02); break;
     case "chrome": m = makePbrMaterial(0.93, 0.94, 0.96, 0.62, 0.17); break;
     case "water": m = glow(makePbrMaterial(0.40, 0.70, 0.92, 0.0, 0.08), 0.05, 0.13, 0.2); break;
     case "bubble": m = glow(makePbrMaterial(0.88, 0.96, 1.0, 0.0, 0.1), 0.12, 0.14, 0.16); break;
-    case "iron": m = glow(makeTexturedPbr(TEX_CAST_IRON, 0.62, 0.38, 1.55, 1.5, 1.45), 0.09, 0.085, 0.08); break;
-    case "wood": m = makePbrMaterial(0.62, 0.40, 0.22, 0.02, 0.55); break;
+    case "iron": m = glow(makeTexturedPbr(TEX_CAST_IRON, 0.5, 0.4, 0.9, 0.88, 0.87), 0.035, 0.034, 0.033); break; // graphite cast iron
+    case "wood": m = makePbrMaterial(0.40, 0.24, 0.14, 0.0, 0.42); break; // oiled walnut
     case "bamboo": m = makePbrMaterial(0.90, 0.72, 0.40, 0.0, 0.5); break;
     case "bambooDark": m = makePbrMaterial(0.70, 0.48, 0.24, 0.0, 0.5); break;
     case "ramekin": m = makePbrMaterial(0.93, 0.91, 0.86, 0.0, 0.2); break;
@@ -444,7 +445,7 @@ export function buildBasket(stockRoot: SceneObject): StrainerBasket {
 export const TAWA_FLOOR = { y: 0.32, r: 7.4, curve: 0 };
 export const TAWA_YAW = -66 * DEG; // same yaw as the skillet / wok
 const TAWA_PROFILE: [number, number][] = [
-  [0.0, 0.0], [8.4, 0.02], [9.1, 0.18], [9.45, 0.62], [9.25, 0.68], [8.95, 0.4], [8.2, 0.3], [0.0, 0.3],
+  [0.0, 0.0], [8.3, 0.02], [9.05, 0.16], [9.42, 0.5], [9.48, 0.64], [9.3, 0.72], [9.0, 0.44], [8.2, 0.31], [0.0, 0.3],
 ];
 
 /** Builds the tawa under the skillet station (hidden, idle name): flat low-rim cast-iron disc, flat handle, helper loop. */
@@ -466,8 +467,12 @@ export function buildTawa(parent: SceneObject): SceneObject {
   addMesh(root, "TawaHandle", ha, "iron", "307_handle");
   const wa = new MeshAcc();
   const sleeve = [P(12.9, 0.52), P(15.4, 0.56), P(17.8, 0.6)];
-  wa.sweep(sleeve, [0.6, 0.62, 0.56], [0.42, 0.44, 0.4], 8, true);
+  wa.sweep(sleeve, [0.6, 0.64, 0.55], [0.42, 0.46, 0.39], 8, true);
   addMesh(root, "TawaHandleGrip", wa, "wood", "307_handle");
+  // brass ferrule where the iron tang enters the walnut grip
+  const fa = new MeshAcc();
+  fa.sweep([P(12.75, 0.515), P(13.25, 0.525)], [0.66, 0.66], [0.47, 0.47], 8, true);
+  addMesh(root, "TawaHandleFerrule", fa, "brass", "307_handle");
   // helper loop opposite the handle
   const e = [Math.cos(348 * DEG), 0, Math.sin(348 * DEG)];
   const s = [-e[2], 0, e[0]];

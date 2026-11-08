@@ -28,6 +28,7 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    useCookEngine: false
     useLiveAiCompiler: false
   ScriptTypesHidden:
     {}
@@ -39,6 +40,7 @@
     []
   DefaultScriptInputs:
     - useLiveAiCompiler: true
+      useCookEngine: true
   ScriptTypes:
     -
       {}

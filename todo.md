@@ -84,6 +84,7 @@ AI-directed cooking engine replacing the fixed salmon template for AI-typed dish
 ---
 
 ## Completed
+- [x] 2026-11-08 design + feedback round (uncommitted, 0 TS errors; cook-plan-chicken65/chapathi/generic, dish-studio-flow, step-engine pass, each alone): (1) premium asset pass by the design agent (vessels, tools, board, food, pantry; chicken 65 world 94 obj / 7,024 tris, asset-gallery scenario); (2) vegetable shape transformations: whole -> cut pieces halfway through CUT, never left whole once a step uses it, paste/puree form for soup/chutney/sauce dishes, plated food follows (`ItemHandle.form/setForm`, `CookRuntime.applyForms`); (3) `Cook/CookItemLabels.ts`: name tags for only the current step's vessel/tool/ingredients, max 5, one sideways-spread row, in front of the vessel, fade on STEP_DONE; (4) "Setting up" panel is created only when the briefing deck is closed (no overlap) and the reveal is faster (0.08 s gap, 0.2 s pop); (5) step card is taller and shows "NEXT: <title>". Leftovers: tags of long names are shortened; Smith AI shape call still not wired; tris of tomato soup world 7,496 of 7,500 cap.
 - [x] [W1] CookPlanSanitizer, CookDirectorService, PlanLibrary (chicken 65, chapathi): done and live-verified in Preview.
 - [x] [W2] ShapeRecipe + builder + irregular chicken recipes: done; gallery passes 3,578 tris for 11 recipes.
 - [x] [W3] CookStage dynamic bench: done.

@@ -8,6 +8,13 @@ import { MiseFlowEventBus } from "../Scripts/MiseFlowEventBus";
 import { SpatialBriefingDeck } from "../Scripts/SpatialBriefingDeck";
 import { CookStage } from "../Scripts/Cook/CookStage";
 import { CookRuntime } from "../Scripts/Cook/CookRuntime";
+import { CookItemLabels } from "../Scripts/Cook/CookItemLabels";
+
+function sceneHas(name: string): boolean {
+  const n = global.scene.getRootObjectsCount();
+  for (let i = 0; i < n; i++) if (global.scene.getRootObject(i).name === name) return true;
+  return false;
+}
 import { MiseFlowLeafInteractor } from "./MiseFlowLeafInteractor";
 
 const DISHES = ["chicken 65", "chapathi", "tomato soup"];
@@ -57,7 +64,10 @@ export class CookPlanDishScenario extends Scenario {
     const onWorld = (d: any) => (world = d ? d.world : null);
     const onFin = () => (finished = true);
     const onNf = () => (notFound = true);
+    const labels = CookItemLabels.getInstance();
+    let labelsMax = 0;
     const onStart = (d: any) => {
+      if (labels) labelsMax = Math.max(labelsMax, labels.getShown().length);
       started.push(d ? String(d.stepId) : "?");
       running++;
       maxRunning = Math.max(maxRunning, running);
@@ -96,6 +106,9 @@ export class CookPlanDishScenario extends Scenario {
       expect(deck.getCardCount()).toBe(Math.min(12, plan.steps.length));
       expect(studio.isSetupHidden()).toBe(true);
       expect(DishBlueprintApplier.getActiveBlueprint().dishId.indexOf("01_") === 0).toBe(true);
+      // the "Setting up" panel must not sit on the deck cards: it only appears once the deck is closed
+      await sleep(1500);
+      expect(sceneHas("CookLoadingPanel")).toBe(false);
       await interactor.tapButton("Btn_BriefingSkip");
 
       // only needed items build; reveal progress events; world ready
@@ -125,6 +138,17 @@ export class CookPlanDishScenario extends Scenario {
       expect(started.length).toBe(plan.steps.length);
       expect(done.length).toBe(plan.steps.length);
       expect(s.errors).toBe(0);
+      // name tags: some step showed tags, never more than five at once
+      expect(labelsMax >= 1 && labelsMax <= 5).toBe(true);
+      // transformations: a vegetable that steps used is never left whole at the end
+      const formReport: string[] = [];
+      for (const id in world.items) {
+        const it = world.items[id];
+        if (!it.form) continue;
+        formReport.push(`${id}:${it.form}`);
+        expect(it.form === "whole").toBe(false);
+      }
+      print(`[CookScenario] labelsMax=${labelsMax} forms=[${formReport.join(", ")}]`);
       if (which === 0) expect(maxRunning >= 2).toBe(true); // frying while the second pan tempers
 
       if (hold > 0) {

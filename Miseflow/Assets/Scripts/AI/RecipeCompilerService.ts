@@ -1,5 +1,5 @@
 import { MiseFlowEventBus, DishCompileRequestedPayload } from "../MiseFlowEventBus";
-import { getApiKey, getModel, isLiveEnabled } from "./AiModelConfig";
+import { getApiKey, getEffort, getModel, isLiveEnabled } from "./AiModelConfig";
 import { getPreset, matchByKeyword, nextPresetIndex, PRESET_COUNT } from "./DishLibraryConfig";
 import { AssetPageTable, BatchLoadResult, VesselKind } from "./AssetPageTable";
 import { DishAssetBuilders, StagedDishItem, StagedItemGroup } from "./IDishAssetBuilder";
@@ -8,8 +8,8 @@ import { NOT_FOUND_MESSAGE, UniversalDishBlueprint, UniversalDishJsonSchema } fr
 
 const ENDPOINT_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const COMPILE_TIMEOUT_MS = 60000; // live latency varies 10-30 s for a full blueprint
-const COMPILE_MAX_TOKENS = 4500;
+const COMPILE_TIMEOUT_MS = 180000; // live latency varies 10-30 s for a full blueprint
+const COMPILE_MAX_TOKENS = 10000;
 
 // Anthropic rejects the full schema ("compiled grammar is too large"), so cookbookCards are left out and derived from steps.
 const COMPILE_SCHEMA: any = (() => {
@@ -503,7 +503,7 @@ export class RecipeCompilerService extends BaseScriptComponent {
       system: COMPILER_SYSTEM_PROMPT,
       messages: [{ role: "user", content: [{ type: "text", text: "Dish request: " + query }] }],
       output_config: {
-        effort: "medium",
+        effort: getEffort("compiler"),
         format: { type: "json_schema", schema: COMPILE_SCHEMA },
       },
     };

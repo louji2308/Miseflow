@@ -1,5 +1,5 @@
 import { MiseFlowEventBus } from "../MiseFlowEventBus";
-import { getApiKey, getModel, isLiveEnabled } from "../AI/AiModelConfig";
+import { getApiKey, getEffort, getModel, isLiveEnabled } from "../AI/AiModelConfig";
 import { CookPlanJsonSchema, NOT_FOUND_TEXT } from "./CookPlanSchema";
 import type { CookPlan } from "./CookPlanSchema";
 import { CookEvents } from "./CookWorld";
@@ -8,8 +8,8 @@ import { lookupPlan } from "./PlanLibrary";
 
 const ENDPOINT_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const DIRECTOR_TIMEOUT_MS = 60000; // live latency of a full CookPlan varies 10-30 s
-const DIRECTOR_MAX_TOKENS = 4000;
+const DIRECTOR_TIMEOUT_MS = 180000; // Opus 5.5 at high effort: ~33 s from a command line, 1-2 min inside Lens
+const DIRECTOR_MAX_TOKENS = 10000; // Opus writes longer plans (a masala dosa plan hit 4000 and was cut off)
 
 // PROMPT-BEGIN (the node replay harness slices between these markers; keep it a single array-join expression)
 export const DIRECTOR_PROMPT: string = [
@@ -33,7 +33,7 @@ export function buildDirectorRequest(query: string): any {
     system: DIRECTOR_PROMPT,
     messages: [{ role: "user", content: [{ type: "text", text: "Dish request: " + String(query) }] }],
     output_config: {
-      effort: "medium",
+      effort: getEffort("director"),
       format: { type: "json_schema", schema: CookPlanJsonSchema },
     },
   };

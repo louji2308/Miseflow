@@ -1,7 +1,7 @@
 import { MiseFlowEventBus } from "../MiseFlowEventBus";
 import { ChoreographyDAG } from "../ChoreographyDAG";
 import { ANTHROPIC_API_KEY } from "./LocalSecrets";
-import { getModel } from "./AiModelConfig";
+import { getEffort, getModel } from "./AiModelConfig";
 import { AIProposal, CookingStageStatus, GateEvaluation, ProposalGate } from "./ProposalGate";
 import { CalibratedStage, VisionConfig, VisionStageName } from "./VisionConfig";
 
@@ -201,7 +201,7 @@ export class RapidRouterVisionService extends BaseScriptComponent {
       system: system,
       messages: [{ role: "user", content: content }],
       output_config: {
-        effort: VisionConfig.effort,
+        effort: getEffort("vision"),
         format: {
           type: "json_schema",
           schema: VisionConfig.responseSchema,

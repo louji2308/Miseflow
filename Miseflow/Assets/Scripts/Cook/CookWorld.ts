@@ -75,6 +75,11 @@ export interface ItemHandle {
   setVisible(on: boolean): void;
   /** scale the whole item (dough disc growing under a rolling pin, dough ball shrinking) */
   setScale(s: vec3): void;
+  /** current shape form of a vegetable ("whole" | "cut" | "paste"); undefined for items without forms */
+  form?: string;
+  /** swap the shown form; false when the item has no such form */
+  setForm?(form: string): boolean;
+  hasForm?(form: string): boolean;
 }
 
 export interface CookWorld {

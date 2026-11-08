@@ -87,20 +87,34 @@ export function hwMat(key: string): Material {
   let m: Material;
   switch (key) {
     case "slab": m = makeTexturedPbr(TEX_SLAB, 0.35, 0.28, 1.44, 1.42, 1.43); break; // mid-grey brushed slab (legacy MAT_SLAB)
-    case "steel": m = makePbrMaterial(0.86, 0.88, 0.92, 0.7, 0.26); setEmissive(m, [0.1, 0.1, 0.11], 1); break;
-    case "chrome": m = makePbrMaterial(0.93, 0.94, 0.96, 0.62, 0.17); break;
-    case "iron": m = makeTexturedPbr(TEX_CAST_IRON, 0.55, 0.4, 1.5, 1.46, 1.42); setEmissive(m, [0.09, 0.085, 0.08], 1); break;
-    case "wood": m = makePbrMaterial(0.62, 0.4, 0.22, 0.02, 0.55); break;
-    case "woodLight": m = makePbrMaterial(0.86, 0.66, 0.42, 0.0, 0.6); setEmissive(m, [0.86, 0.66, 0.42], 0.08); break;
+    // luxury collection: brushed stainless, matte-black cast iron, copper / brass accents, ivory glaze, walnut
+    case "steel": m = makePbrMaterial(0.80, 0.82, 0.85, 0.86, 0.3); setEmissive(m, [0.05, 0.05, 0.055], 1); break;
+    case "chrome": m = makePbrMaterial(0.93, 0.94, 0.96, 0.9, 0.12); break;
+    case "iron": m = makeTexturedPbr(TEX_CAST_IRON, 0.5, 0.4, 0.9, 0.88, 0.87); setEmissive(m, [0.035, 0.034, 0.033], 1); break; // graphite cast iron
+    case "ironEdge": m = makePbrMaterial(0.62, 0.62, 0.64, 0.85, 0.24); break;
+    case "copper": m = makePbrMaterial(0.86, 0.5, 0.32, 0.9, 0.26); setEmissive(m, [0.06, 0.03, 0.018], 1); break;
+    case "brass": m = makePbrMaterial(0.9, 0.72, 0.4, 0.9, 0.24); setEmissive(m, [0.05, 0.04, 0.02], 1); break;
+    case "wood": m = makePbrMaterial(0.40, 0.24, 0.14, 0.0, 0.42); break; // oiled walnut
+    case "woodLight": m = makePbrMaterial(0.80, 0.60, 0.38, 0.0, 0.5); setEmissive(m, [0.8, 0.6, 0.38], 0.04); break; // olive wood
     case "endgrain": m = makeTexturedPbr(TEX_ENDGRAIN, 0.0, 0.62); break;
-    case "ceramic": m = makePbrMaterial(0.9, 0.9, 0.88, 0.02, 0.4); setEmissive(m, [0.9, 0.9, 0.88], 0.06); break;
-    case "ceramicRim": m = makePbrMaterial(0.56, 0.6, 0.66, 0.05, 0.45); break;
-    case "ramekin": m = makePbrMaterial(0.93, 0.91, 0.86, 0.0, 0.2); break;
-    case "glassCup": m = makePbrMaterial(0.78, 0.86, 0.92, 0.1, 0.12); setEmissive(m, [0.78, 0.86, 0.92], 0.08); break;
+    case "ceramic": m = makePbrMaterial(0.95, 0.93, 0.88, 0.0, 0.16); setEmissive(m, [0.95, 0.93, 0.88], 0.04); break; // ivory glaze
+    case "ceramicRim": m = makePbrMaterial(0.88, 0.7, 0.38, 0.92, 0.22); break; // fine gold line
+    case "ceramicFoot": m = makePbrMaterial(0.80, 0.76, 0.70, 0.0, 0.7); break; // unglazed biscuit foot
+    case "plateBand": m = makePbrMaterial(0.2, 0.29, 0.4, 0.05, 0.18); setEmissive(m, [0.2, 0.29, 0.4], 0.05); break; // slate-blue reactive glaze
+    case "ramekin": m = makePbrMaterial(0.95, 0.93, 0.88, 0.0, 0.14); break;
+    case "ramekinOut": m = makePbrMaterial(0.2, 0.21, 0.23, 0.05, 0.3); break; // charcoal glaze exterior
+    case "glassCup": {
+      m = makePbrMaterial(0.86, 0.92, 0.96, 0.0, 0.05);
+      m.mainPass.blendMode = BlendMode.Normal;
+      m.mainPass.depthWrite = false;
+      m.mainPass.baseColor = new vec4(0.86, 0.92, 0.96, 0.32);
+      setEmissive(m, [0.86, 0.92, 0.96], 0.05);
+      break;
+    }
     case "bamboo": m = makePbrMaterial(0.9, 0.72, 0.4, 0.0, 0.5); break;
     case "bambooDark": m = makePbrMaterial(0.7, 0.48, 0.24, 0.0, 0.5); break;
     case "bristle": m = makePbrMaterial(0.96, 0.9, 0.7, 0.0, 0.8); break;
-    case "polymer": m = makePbrMaterial(0.32, 0.36, 0.42, 0.1, 0.4); setEmissive(m, [0.32, 0.36, 0.42], 0.1); break;
+    case "polymer": m = makePbrMaterial(0.16, 0.17, 0.19, 0.1, 0.45); break;
     default: m = makePbrMaterial(0.8, 0.8, 0.8, 0.2, 0.4);
   }
   shared[key] = m;
@@ -266,10 +280,14 @@ function handleSweep(acc: MeshAcc, deg: number, r0: number, r1: number, y0: numb
 export function buildSkillet(name: string): OwnVessel {
   const root = newObj(name, null);
   const body = new MeshAcc();
-  body.lathe([[0, 0], [5.2, 0.02], [5.65, 0.3], [6.0, 1.9], [6.15, 2.06], [5.95, 2.1], [5.62, 0.66], [5.1, 0.44], [0, 0.42]], 24);
+  // heavy base ring, flared wall, thick rounded rim, soft inner radius
+  body.lathe([[0, 0.02], [4.95, 0.02], [5.45, 0.06], [5.72, 0.36], [6.0, 1.86], [6.16, 2.04], [6.02, 2.14], [5.8, 2.02], [5.6, 0.7], [5.3, 0.48], [0, 0.42]], 24);
   meshObj(root, name + "_Body", body, hwMat("iron"));
   const h = new MeshAcc();
   handleSweep(h, 180, 5.9, 14.5, 1.8, 2.7, 0.55, 0.3);
+  // helper lug opposite the handle (cast loop)
+  const lug: [number, number, number][] = [[5.95, 1.72, -1.1], [7.0, 1.86, -0.95], [7.55, 1.92, 0], [7.0, 1.86, 0.95], [5.95, 1.72, 1.1]];
+  h.sweep(lug, lug.map(() => 0.22), lug.map(() => 0.17), 6, true);
   meshObj(root, name + "_Handle", h, hwMat("iron"));
   return { root, rimY: 2.08, rimR: 6.0, floorY: 0.44, floorR: 5.1, inner: [[0.42, 0], [0.44, 5.1], [0.66, 5.62], [2.1, 5.95]], handleDeg: 180, handleLen: 8.6 };
 }
@@ -278,12 +296,18 @@ export function buildSkillet(name: string): OwnVessel {
 export function buildSaucepan(name: string, scale: number = 1): OwnVessel {
   const s = scale;
   const root = newObj(name, null);
+  // copper exterior (hero accent of the collection) over a brushed-steel interior, rolled pouring lip
+  const outer: [number, number][] = [[0, 0.02], [3.4, 0.02], [3.55, 0], [3.95, 0.3], [4.05, 2.4], [4.0, 4.3], [4.2, 4.5], [4.12, 4.6]];
+  const inner: [number, number][] = [[4.12, 4.6], [3.9, 4.36], [3.85, 2.4], [3.78, 0.5], [3.5, 0.42], [0, 0.4]];
   const body = new MeshAcc();
-  const prof: [number, number][] = [[0, 0], [3.5, 0.02], [3.95, 0.35], [4.05, 2.4], [4.0, 4.3], [4.22, 4.52], [4.06, 4.58], [3.84, 4.3], [3.85, 2.4], [3.78, 0.44], [0, 0.4]];
-  body.lathe(prof.map(([r, y]) => [r * s, y * s] as [number, number]), 24);
-  meshObj(root, name + "_Body", body, hwMat("steel"));
+  body.lathe(outer.map(([r, y]) => [r * s, y * s] as [number, number]), 24);
+  meshObj(root, name + "_Body", body, hwMat("copper"));
+  const inside = new MeshAcc();
+  inside.lathe(inner.map(([r, y]) => [r * s, y * s] as [number, number]), 24);
+  meshObj(root, name + "_Inner", inside, hwMat("steel"));
   const h = new MeshAcc();
   handleSweep(h, 180, 3.9 * s, 12.5 * s, 3.9 * s, 4.9 * s, 0.42 * s, 0.22 * s);
+  for (const z of [-0.5, 0.5]) h.dome(-3.87 * s, 3.9 * s, z * s, [1, 0, 0], 0.19 * s, 0.09 * s, 6);
   meshObj(root, name + "_Handle", h, hwMat("steel"));
   return {
     root, rimY: 4.55 * s, rimR: 4.06 * s, floorY: 0.44 * s, floorR: 3.78 * s,
@@ -294,10 +318,16 @@ export function buildSaucepan(name: string, scale: number = 1): OwnVessel {
 /** #325 stainless prep / mixing bowl of rim radius R. */
 export function buildBowl(name: string, R: number): OwnVessel {
   const root = newObj(name, null);
-  const p: [number, number][] = [[0, 0], [0.5, 0], [0.58, 0.04], [0.84, 0.25], [0.97, 0.52], [1.0, 0.6], [0.96, 0.62], [0.92, 0.55], [0.8, 0.3], [0.55, 0.11], [0, 0.09]];
+  // copper-clad exterior on a turned foot ring, thin rolled lip, brushed-steel interior
+  const p: [number, number][] = [[0, 0.012], [0.46, 0], [0.5, 0.03], [0.7, 0.13], [0.9, 0.36], [0.99, 0.54], [1.015, 0.605], [0.998, 0.628]];
+  const q: [number, number][] = [[0.998, 0.628], [0.965, 0.6], [0.87, 0.38], [0.64, 0.17], [0.36, 0.105], [0, 0.095]];
+  const segs = 22;
   const a = new MeshAcc();
-  a.lathe(p.map(([r, y]) => [r * R, y * R] as [number, number]), 24);
-  meshObj(root, name + "_Body", a, hwMat("steel"));
+  a.lathe(p.map(([r, y]) => [r * R, y * R] as [number, number]), segs);
+  meshObj(root, name + "_Body", a, hwMat("copper"));
+  const b = new MeshAcc();
+  b.lathe(q.map(([r, y]) => [r * R, y * R] as [number, number]), segs);
+  meshObj(root, name + "_Inner", b, hwMat("steel"));
   return {
     root, rimY: 0.62 * R, rimR: R, floorY: 0.1 * R, floorR: 0.55 * R,
     inner: [[0.09 * R, 0], [0.11 * R, 0.55 * R], [0.3 * R, 0.8 * R], [0.55 * R, 0.92 * R], [0.62 * R, 0.96 * R]], handleDeg: NaN, handleLen: 0,
@@ -308,12 +338,22 @@ export function buildBowl(name: string, R: number): OwnVessel {
 export function buildPlate(name: string, R: number): OwnVessel {
   const root = newObj(name, null);
   const k = R / 5.6;
-  const p: [number, number][] = [[0, 0], [2.8, 0], [3.0, 0.1], [4.6, 0.36], [5.6, 0.76], [5.55, 0.84], [4.5, 0.52], [3.0, 0.3], [0, 0.27]];
+  const segs = R < 4 ? 18 : 22;
+  // fine-china profile: turned foot ring, soft inner well, wide flat rim rising to a delicate raised lip
+  // two glazes: deep slate-blue band (underside, lip and wide rim) framing an ivory well, gold line on the lip
+  const band: [number, number][] = [
+    [0, 0.06], [2.55, 0.06], [2.62, 0], [2.88, 0.02], [4.3, 0.36], [5.35, 0.66], [5.6, 0.8],
+    [5.52, 0.86], [5.3, 0.74], [4.35, 0.53],
+  ];
+  const well: [number, number][] = [[4.35, 0.53], [3.1, 0.31], [0, 0.27]];
   const a = new MeshAcc();
-  a.lathe(p.map(([r, y]) => [r * k, y] as [number, number]), 24);
+  a.lathe(well.map(([r, y]) => [r * k, y] as [number, number]), segs);
   meshObj(root, name + "_Body", a, hwMat("ceramic"));
+  const bd = new MeshAcc();
+  bd.lathe(band.map(([r, y]) => [r * k, y] as [number, number]), segs);
+  meshObj(root, name + "_Band", bd, hwMat("plateBand"));
   const rim = new MeshAcc();
-  rim.torus(0, 0.8, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 5.56 * k, 0.06, 0.05, 24, 3);
+  rim.torus(0, 0.83, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 5.56 * k, 0.07, 0.045, segs, 3);
   meshObj(root, name + "_Rim", rim, hwMat("ceramicRim"));
   return { root, rimY: 0.8, rimR: 5.6 * k, floorY: 0.3, floorR: 3.0 * k, inner: [[0.27, 0], [0.3, 3.0 * k], [0.52, 4.5 * k], [0.84, 5.5 * k]], handleDeg: NaN, handleLen: 0 };
 }
@@ -338,12 +378,20 @@ function chain(pts: [number, number, number][], r: number[], rh: number[], segs:
 /** #331 turner spatula (own copy of the look; the legacy SpatulaProp builder is private). */
 export function buildSpatula(name: string): ToolBuild {
   const root = newObj(name, null);
+  // bevelled brushed-steel blade (thin front edge, thicker heel) with three slots, forged neck + bolster,
+  // tapered walnut grip with brass rivets
   const head = new MeshAcc();
-  head.box(1.5, 0.08, 0, 1.5, 0.06, 1.15);
-  for (const z of [-0.55, 0, 0.55]) head.box(1.6, 0.15, z, 1.0, 0.012, 0.09);
+  head.sweep([[0.0, 0.07, 0], [0.8, 0.07, 0], [2.0, 0.08, 0], [2.95, 0.11, 0]], [1.05, 1.18, 1.12, 0.5], [0.022, 0.035, 0.042, 0.06], 8, true);
   meshObj(root, name + "_Head", head, hwMat("steel"));
-  meshObj(root, name + "_Neck", chain([[2.9, 0.1, 0], [4.4, 0.55, 0], [5.8, 0.85, 0]], [0.32, 0.22, 0.2], [0.07, 0.07, 0.07], 6), hwMat("steel"));
-  meshObj(root, name + "_Grip", chain([[5.6, 0.85, 0], [8.0, 0.9, 0], [10.5, 0.9, 0], [12.6, 0.88, 0]], [0.32, 0.4, 0.4, 0.32], [0.3, 0.36, 0.36, 0.3], 8), hwMat("wood"));
+  const slots = new MeshAcc();
+  for (const z of [-0.5, 0, 0.5]) slots.box(1.45, 0.108, z, 0.72, 0.012, 0.055);
+  meshObj(root, name + "_Slots", slots, hwMat("polymer"));
+  const neck = chain([[2.85, 0.1, 0], [4.3, 0.55, 0], [5.55, 0.84, 0], [5.95, 0.86, 0]], [0.28, 0.2, 0.33, 0.33], [0.07, 0.07, 0.3, 0.3], 6);
+  meshObj(root, name + "_Neck", neck, hwMat("steel"));
+  meshObj(root, name + "_Grip", chain([[5.85, 0.86, 0], [7.4, 0.9, 0], [9.4, 0.93, 0], [11.4, 0.92, 0], [12.6, 0.88, 0]], [0.3, 0.35, 0.4, 0.38, 0.3], [0.28, 0.32, 0.36, 0.34, 0.27], 8), hwMat("wood"));
+  const rv = new MeshAcc();
+  for (const x of [7.6, 10.6]) rv.dome(x, x < 9 ? 1.2 : 1.27, 0, [0, 1, 0], 0.13, 0.05, 5); // through-rivets on the grip crown
+  meshObj(root, name + "_Rivets", rv, hwMat("brass"));
   return { root, tipLocal: new vec3(1.2, 0.1, 0), length: 12.6, halfWidth: 1.2 };
 }
 
@@ -353,7 +401,13 @@ export function buildKnife(name: string): ToolBuild {
   const blade = new MeshAcc();
   blade.sweep([[0, 0.95, 0], [1.2, 0.85, 0], [3.0, 0.82, 0], [5.0, 0.84, 0], [6.6, 0.86, 0]], [0.02, 0.04, 0.05, 0.06, 0.07], [0.12, 0.62, 0.8, 0.84, 0.84], 4, true);
   meshObj(root, name + "_Blade", blade, hwMat("chrome"));
-  meshObj(root, name + "_Grip", chain([[6.5, 0.9, 0], [8.2, 0.9, 0], [10.0, 0.9, 0], [11.2, 0.92, 0]], [0.32, 0.36, 0.38, 0.34], [0.42, 0.48, 0.5, 0.46], 8), hwMat("wood"));
+  const grip = chain([[6.75, 0.9, 0], [8.2, 0.9, 0], [10.0, 0.9, 0], [11.2, 0.92, 0]], [0.3, 0.34, 0.37, 0.33], [0.42, 0.48, 0.5, 0.46], 8);
+  meshObj(root, name + "_Grip", grip, hwMat("wood"));
+  // steel bolster + brass pins
+  const fit = new MeshAcc();
+  fit.sweep([[6.5, 0.88, 0], [6.8, 0.9, 0]], [0.2, 0.32], [0.46, 0.48], 8, true);
+  for (const x of [8.3, 9.9]) for (const sg of [-1, 1]) fit.dome(x, 0.9, sg * (x < 9 ? 0.345 : 0.37), [0, 0, sg], 0.1, 0.035, 4);
+  meshObj(root, name + "_Bolster", fit, hwMat("brass"));
   return { root, tipLocal: new vec3(3.0, 0.1, 0), length: 11.2, halfWidth: 0.6 };
 }
 
@@ -541,7 +595,7 @@ export function makeFallbackProp(kind: string, colour: any, opts: { count?: numb
     case "GRAIN_HEAP": {
       containerObj(root, "Container", [[0, 0], [2.0, 0], [2.4, 0.2], [2.75, 0.72], [2.62, 0.76], [2.25, 0.32], [0, 0.28]], 20, hwMat("ceramic"));
       const m = new MeshAcc();
-      m.lathe([[0, 0.3], [2.1, 0.3], [1.6, 0.72], [0.9, 1.08], [0, 1.24]], 16, k === "GRAIN_HEAP" ? 9 : 5, 0.05);
+      m.lathe([[0, 0.36], [1.8, 0.36], [1.5, 0.72], [0.85, 1.07], [0, 1.22]], 16, k === "GRAIN_HEAP" ? 9 : 5, 0.04);
       piece(root, "Piece_0", m, food);
       break;
     }
@@ -615,19 +669,30 @@ export function makeFallbackProp(kind: string, colour: any, opts: { count?: numb
       break;
     }
     case "SPICE_RAMEKIN": {
-      containerObj(root, "Container", [[0, 0], [1.02, 0], [1.34, 0.14], [1.44, 1.14], [1.3, 1.18], [1.2, 1.08], [1.18, 0.34], [0, 0.3]], 16, hwMat("ramekin"));
+      // charcoal-glazed exterior on a foot, ivory glazed interior, rounded lip; powder heaped in a soft cone
+      const c = containerObj(root, "Container", [[0, 0.01], [0.98, 0.01], [1.04, 0], [1.3, 0.1], [1.45, 1.1], [1.4, 1.18]], 16, hwMat("ramekinOut"));
+      containerObj(c, "ContainerGlaze", [[1.4, 1.18], [1.28, 1.14], [1.19, 0.4], [1.0, 0.31], [0, 0.3]], 16, hwMat("ramekin"));
       const m = new MeshAcc();
-      m.lathe([[0, 1.0], [1.14, 1.0], [0.84, 1.16], [0.42, 1.28], [0, 1.34]], 12);
-      piece(root, "Piece_0", m, itemMat(colour, 0.85, 0, 0.16));
+      m.lathe([[0, 0.98], [1.0, 0.98], [0.82, 1.16], [0.4, 1.3], [0, 1.36]], 16, 3, 0.03); // inset from the wall so a fill-scaled pile never pokes through
+      piece(root, "Piece_0", m, itemMat(colour, 0.9, 0, 0.16));
       break;
     }
     case "LIQUID_CUP":
     case "DAIRY_CUP": {
-      containerObj(root, "Container", [[0, 0], [1.2, 0], [1.42, 0.2], [1.62, 2.3], [1.5, 2.34], [1.4, 0.4], [0, 0.34]], 12, hwMat(k === "LIQUID_CUP" ? "glassCup" : "ramekin"));
+      if (k === "LIQUID_CUP") {
+        // clear glass with a heavy base; liquid surface sized to the inner wall (no edge poking through the glass)
+        containerObj(root, "Container", [[0, 0], [1.2, 0], [1.42, 0.2], [1.62, 2.3], [1.56, 2.36], [1.48, 2.3], [1.38, 0.5], [0, 0.44]], 12, hwMat("glassCup"));
+      } else {
+        const c = containerObj(root, "Container", [[0, 0.01], [1.2, 0.01], [1.44, 0.2], [1.62, 2.3], [1.56, 2.36]], 12, hwMat("ramekinOut"));
+        containerObj(c, "ContainerGlaze", [[1.56, 2.36], [1.48, 2.28], [1.4, 0.4], [1.2, 0.35], [0, 0.34]], 12, hwMat("ramekin"));
+      }
       const m = new MeshAcc();
-      if (k === "DAIRY_CUP") m.lathe([[0, 1.7], [1.5, 1.7], [1.2, 1.95], [0.6, 2.1], [0, 2.14]], 14);
-      else m.disc(0, 1.85, 0, 1.52, 16, 0.02);
-      piece(root, "Piece_0", m, itemMat(colour, k === "LIQUID_CUP" ? 0.08 : 0.5, 0, 0.18));
+      if (k === "DAIRY_CUP") m.lathe([[0, 1.7], [1.26, 1.7], [1.1, 1.92], [0.75, 2.04], [0.33, 2.11], [0, 2.13]], 12, 2, 0.03);
+      else {
+        m.lathe([[0, 0.5], [1.24, 0.54], [1.3, 1.84]], 12);
+        m.disc(0, 1.84, 0, 1.3, 12, 0.0);
+      }
+      piece(root, "Piece_0", m, itemMat(colour, k === "LIQUID_CUP" ? 0.06 : 0.5, 0, 0.18));
       break;
     }
     default: {

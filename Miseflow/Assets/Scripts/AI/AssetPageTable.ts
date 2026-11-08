@@ -22,7 +22,7 @@
  * No meshes are built here: this module is data only (meshes are the asset phase, see IDishAssetBuilder).
  */
 
-import { getApiKey, getModel, isLiveEnabled } from "./AiModelConfig";
+import { getApiKey, getEffort, getModel, isLiveEnabled } from "./AiModelConfig";
 import { SlotId } from "./SpatialSlotAllocator";
 import {
   PREP_ARCHETYPE_LIST,
@@ -36,8 +36,8 @@ import {
 
 const ENDPOINT_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
-const SYNTH_TIMEOUT_MS = 15000; // live synth measured ~8-10 s
-const SYNTH_MAX_TOKENS = 400;
+const SYNTH_TIMEOUT_MS = 30000; // live synth measured ~8-10 s
+const SYNTH_MAX_TOKENS = 800;
 
 export const DYNAMIC_INGREDIENT_FIRST = 200;
 export const DYNAMIC_INGREDIENT_LAST = 249;
@@ -444,7 +444,7 @@ export class IngredientPageTable {
         "(" + PREP_ARCHETYPE_LIST.join(", ") + "), a linear RGB colour (0-1 each) for the raw " +
         "ingredient, a stem/leaf colour (0-1 each, reuse the colour if none), and a scaleMultiplier between 0.6 and 1.2. Reply with the JSON object only.",
       messages: [{ role: "user", content: [{ type: "text", text: "Ingredient: " + (entry.name || "unknown") + " (hint archetype " + base.archetype + ")" }] }],
-      output_config: { format: { type: "json_schema", schema: schema } },
+      output_config: { effort: getEffort("synthesizer"), format: { type: "json_schema", schema: schema } },
     };
     const timeout = new Promise<never>((_res, rej) => {
       rt.delay(SYNTH_TIMEOUT_MS / 1000, () => rej(new Error("timeout " + SYNTH_TIMEOUT_MS + "ms")));

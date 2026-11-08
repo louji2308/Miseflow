@@ -340,12 +340,30 @@ class ItemImpl implements ItemHandle {
   pieces: SceneObject[] = [];
   homePos: vec3 = vec3.zero();
   paints: PaintRec[] = [];
+  form: string = "";
+  forms: { [form: string]: SceneObject } = {};
 
   constructor(id: string, name: string, role: string, obj: SceneObject) {
     this.id = id;
     this.name = name;
     this.role = role;
     this.obj = obj;
+  }
+
+  /** Swaps the shown shape (whole -> cut -> paste). Returns false when this item has no such form. */
+  setForm(form: string): boolean {
+    const f = this.forms[form];
+    if (!f || isNull(f)) return false;
+    for (const k in this.forms) {
+      const o = this.forms[k];
+      if (o && !isNull(o)) o.enabled = k === form;
+    }
+    this.form = form;
+    return true;
+  }
+
+  hasForm(form: string): boolean {
+    return !!this.forms[form];
   }
 
   paint(color: vec3, rough01: number, emissive01: number): void {
@@ -378,13 +396,21 @@ function paintRecs(pieces: SceneObject[], skipFirst: boolean): PaintRec[] {
       seen.push(m);
       if (skipFirst && i === 0) continue;
       const b = m.mainPass.baseColor;
-      out.push({ m, base: [b.r, b.g, b.b], k: (skipFirst ? i === 1 : i === 0) ? 1 : 0.5 });
+      const nm = rmvs[i].getSceneObject().name;
+      out.push({ m, base: [b.r, b.g, b.b], k: (skipFirst ? i === 1 : i === 0) || nm === "Body" || nm === "Paste" ? 1 : 0.5 });
     }
   }
   return out;
 }
 
-function vegPiece(ing: CookIngredient, n: number, holder: SceneObject): void {
+/** Plans where a vegetable ends up as a paste / puree (chutney, soup, sauce...) instead of staying in pieces. */
+export function wantsPaste(plan: CookPlan, ing: CookIngredient): boolean {
+  if (String(ing.role).toUpperCase() !== "VEG") return false;
+  const re = /paste|chutney|puree|purée|mash|ground|grind|blend|crush|sauce|soup|dip|gravy|masala/i;
+  return re.test(String(ing.form || "")) || re.test(String(plan.dishTitle || ""));
+}
+
+function vegPiece(ing: CookIngredient, n: number, holder: SceneObject, paste: boolean): { [form: string]: SceneObject } {
   const col = lift(ing.colorRaw);
   let entry: PrepSlotEntry;
   const cat = n > 0 ? getCatalogEntry(n) : null;
@@ -408,15 +434,51 @@ function vegPiece(ing: CookIngredient, n: number, holder: SceneObject): void {
   const half = Math.max(0.05, (b[3] - b[0]) / 2, (b[5] - b[2]) / 2);
   const s = 1.3 / half;
   const pieceObj = newObj("Piece_0", holder);
-  const inner = newObj("Veg", pieceObj);
-  inner.getTransform().setLocalScale(new vec3(s, s, s));
-  inner.getTransform().setLocalPosition(new vec3((-(b[0] + b[3]) / 2) * s, -b[1] * s, (-(b[2] + b[5]) / 2) * s));
   const cols = [set.bodyRgb, set.accentRgb, set.detailRgb];
-  for (let i = 0; i < 3; i++) {
-    const p = parts[i];
-    if (!p || p.count() === 0) continue;
-    meshObj(inner, ["Body", "Accent", "Detail"][i], p, itemMat(cols[i], set.rough, set.metal, 0.12));
+  const forms: { [form: string]: SceneObject } = {};
+  const seat = (name: string, stage: (MeshAcc | null)[], sc: number, fb: number[]): SceneObject => {
+    const inner = newObj(name, pieceObj);
+    inner.getTransform().setLocalScale(new vec3(sc, sc, sc));
+    inner.getTransform().setLocalPosition(new vec3((-(fb[0] + fb[3]) / 2) * sc, -fb[1] * sc, (-(fb[2] + fb[5]) / 2) * sc));
+    for (let i = 0; i < 3; i++) {
+      const p = stage[i];
+      if (!p || p.count() === 0) continue;
+      meshObj(inner, ["Body", "Accent", "Detail"][i], p, itemMat(cols[i], set.rough, set.metal, 0.12));
+    }
+    return inner;
+  };
+  forms["whole"] = seat("Veg_whole", parts, s, b);
+  // cut pile (generator stage 2): the pieces the knife leaves; sized to stay inside the whole item's footprint
+  const cutParts = set.parts[2];
+  if (cutParts) {
+    const cb = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
+    for (const p of cutParts) {
+      if (!p) continue;
+      const q = p.bounds();
+      for (let i = 0; i < 3; i++) {
+        cb[i] = Math.min(cb[i], q[i]);
+        cb[i + 3] = Math.max(cb[i + 3], q[i + 3]);
+      }
+    }
+    if (cb[0] < 1e8) {
+      const ch = Math.max(0.05, (cb[3] - cb[0]) / 2, (cb[5] - cb[2]) / 2);
+      const cs = Math.min(s * 1.15, (1.3 * 1.25) / ch);
+      forms["cut"] = seat("Veg_cut", cutParts, cs, cb);
+      forms["cut"].enabled = false;
+    }
   }
+  if (paste) {
+    // flat glossy paste: a few overlapping squashed lobes in the flesh colour
+    const acc = new MeshAcc();
+    acc.ellipsoid(0, 0.16, 0, 1.15, 0.18, 1.0, 10, 5);
+    acc.ellipsoid(0.55, 0.14, 0.35, 0.7, 0.14, 0.62, 8, 4);
+    acc.ellipsoid(-0.6, 0.14, -0.3, 0.62, 0.13, 0.55, 8, 4);
+    const pasteObj = newObj("Veg_paste", pieceObj);
+    meshObj(pasteObj, "Paste", acc, itemMat(set.detailRgb, 0.22, 0, 0.14));
+    pasteObj.enabled = false;
+    forms["paste"] = pasteObj;
+  }
+  return forms;
 }
 
 // ───────────────────────────── tools ─────────────────────────────
@@ -483,8 +545,8 @@ interface Job {
  * Rejects if the world is disposed before it is ready.
  */
 export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookStageOptions = {}): Promise<CookWorld> {
-  const gap = opts.revealGapSec !== undefined ? opts.revealGapSec : 0.15;
-  const popSec = opts.popSec !== undefined ? opts.popSec : 0.25;
+  const gap = opts.revealGapSec !== undefined ? opts.revealGapSec : 0.08;
+  const popSec = opts.popSec !== undefined ? opts.popSec : 0.2;
   const emitEvents = opts.emitEvents !== false;
   const canReveal = opts.canReveal || (() => true);
 
@@ -717,9 +779,10 @@ export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookSt
       obj.getTransform().setLocalRotation(quat.angleAxis(-p.ang, vec3.up()));
     }
     let content: SceneObject;
+    let vegForms: { [form: string]: SceneObject } | null = null;
     if (look.t === "veg") {
       content = newObj("Veg_" + ing.id, null);
-      vegPiece(ing, look.n, content);
+      vegForms = vegPiece(ing, look.n, content, wantsPaste(plan, ing));
     } else if (look.t === "shape") {
       content = shapeProp(look.kind, raw, { count: look.count, seed: hashStr(ing.id) });
       containerFirst = !!look.containerFirst;
@@ -742,6 +805,10 @@ export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookSt
     h.pieces = collectPieces(content);
     if (h.pieces.length === 0) h.pieces = [content];
     h.paints = paintRecs(h.pieces, containerFirst);
+    if (vegForms) {
+      h.forms = vegForms;
+      h.form = "whole";
+    }
     h.homePos = obj.getTransform().getWorldPosition();
     items[ing.id] = h;
     return [obj];
@@ -784,14 +851,25 @@ export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookSt
   };
   if (opts.onCreated) opts.onCreated(world);
 
-  if (opts.showPanel !== false) {
+  // The "Setting up" panel appears only when the reveal can start (briefing deck closed), so it never sits on top of
+  // the deck cards; the bench keeps building hidden meanwhile and its chips catch up with the real progress.
+  const jobState: number[] = jobs.map(() => 0);
+  let panelMade = false;
+  const makePanel = (): void => {
+    panelMade = true;
+    if (opts.showPanel === false) return;
     try {
       panel = new CookLoadingPanel(plan.dishTitle || "your dish", jobs.map((j) => j.label));
+      for (let i = 0; i < jobState.length; i++) if (jobState[i] > 0) panel.setState(i, jobState[i]);
     } catch (e) {
       print(`[CookStage] loading panel failed: ${e}`);
       panel = null;
     }
-  }
+  };
+  const setJobState = (i: number, st: number): void => {
+    if (i >= 0 && i < jobState.length) jobState[i] = st;
+    if (panel) panel.setState(i, st);
+  };
 
   // ── 4. ticker: build one job per frame, reveal one by one, animate handles ──
   let nextBuild = 0;
@@ -815,13 +893,14 @@ export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookSt
         }
         j.built = true;
         if (j.after) j.after();
-        if (panel) panel.setState(nextBuild, 1);
+        setJobState(nextBuild, 1);
         nextBuild++;
       }
+      if (!panelMade && !ready && canReveal()) makePanel();
       if (!ready && nextReveal < jobs.length && jobs[nextReveal].built && clock >= nextPopAt && canReveal()) {
         const j = jobs[nextReveal];
         for (const t of j.targets) pops.push({ obj: t.obj, orig: t.orig, t: 0 });
-        if (panel) panel.setState(nextReveal, 2);
+        setJobState(nextReveal, 2);
         nextReveal++;
         nextPopAt = clock + gap;
         if (emitEvents) emit(CookEvents.LOAD_PROGRESS, { index: nextReveal, total: jobs.length, label: j.label });

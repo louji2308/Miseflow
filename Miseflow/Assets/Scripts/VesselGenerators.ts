@@ -39,11 +39,12 @@ function mat(key: string): Material {
   let m: Material;
   switch (key) {
     // seasoned carbon steel: bronze-blue patina over the iron texture, lifted so it never reads black on Specs
-    case "carbon": m = glow(makeTexturedPbr(TEX_CAST_IRON, 0.72, 0.34, 1.32, 1.24, 1.22), 0.07, 0.065, 0.07); break;
-    case "carbonEdge": m = glow(makePbrMaterial(0.70, 0.69, 0.72, 0.85, 0.22), 0.1, 0.1, 0.11); break;
-    case "wood": m = makePbrMaterial(0.62, 0.40, 0.22, 0.02, 0.55); break;
-    case "brass": m = glow(makePbrMaterial(0.98, 0.80, 0.42, 0.82, 0.24), 0.1, 0.08, 0.04); break;
-    case "copper": m = glow(makePbrMaterial(0.98, 0.58, 0.38, 0.85, 0.22), 0.12, 0.06, 0.03); break;
+    // seasoned black carbon steel with a soft satin sheen over the iron texture
+    case "carbon": m = glow(makeTexturedPbr(TEX_CAST_IRON, 0.66, 0.34, 0.86, 0.85, 0.88), 0.03, 0.03, 0.034); break;
+    case "carbonEdge": m = glow(makePbrMaterial(0.80, 0.81, 0.83, 0.9, 0.2), 0.05, 0.05, 0.055); break; // polished rolled rim
+    case "wood": m = makePbrMaterial(0.40, 0.24, 0.14, 0.0, 0.42); break; // oiled walnut
+    case "brass": m = glow(makePbrMaterial(0.92, 0.74, 0.40, 0.9, 0.24), 0.06, 0.045, 0.02); break;
+    case "copper": m = glow(makePbrMaterial(0.88, 0.52, 0.33, 0.9, 0.24), 0.07, 0.035, 0.02); break;
     case "dough": m = makePbrMaterial(0.95, 0.86, 0.68, 0.0, 0.7); break;
     case "chrome": m = makePbrMaterial(0.93, 0.94, 0.96, 0.62, 0.17); break;
     case "glaze": m = makePbrMaterial(0.92, 0.91, 0.88, 0.02, 0.16); break;
@@ -130,7 +131,7 @@ export function buildWok(parent: SceneObject): { root: SceneObject; wokHandle: S
 
   // rolled rim glint: lighter steel edge so the silhouette reads on the additive display
   const rim = new MeshAcc();
-  rim.torus(0, 4.66, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 9.86, 0.11, 0.1, 32, 4);
+  rim.torus(0, 4.66, 0, [1, 0, 0], [0, 0, 1], [0, 1, 0], 9.86, 0.11, 0.1, 30, 3);
   addMesh(root, "WokRimGlint", rim, "carbonEdge", "302_rim");
 
   // Chinese wok: long hollow-steel socket + wooden grip (rear-left, like the skillet handle) + helper loop opposite
@@ -162,7 +163,13 @@ export function buildWok(parent: SceneObject): { root: SceneObject; wokHandle: S
   const ka = new MeshAcc();
   rimLoop(ka, 168, 4.3, 2.1, 1.45, 0.28);
   rimLoop(ka, 348, 4.3, 2.1, 1.45, 0.28);
-  addMesh(kadaiLoops, "KadaiLoops", ka, "carbon", "302_kadai_loops");
+  // brass rivet heads where each loop is fixed, visible on the inner wall
+  for (const phi of [168, 348]) {
+    const f = handleFrame(phi);
+    const n = [-f.d[0] * 0.66, 0.75, -f.d[2] * 0.66];
+    for (const lat of [-1.2, 1.2]) ka.dome(f.d[0] * 8.98 + f.s[0] * lat, 4.16, f.d[2] * 8.98 + f.s[2] * lat, n, 0.24, 0.1, 5);
+  }
+  addMesh(kadaiLoops, "KadaiLoops", ka, "brass", "302_kadai_loops");
   kadaiLoops.enabled = false;
 
   root.enabled = false;

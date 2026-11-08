@@ -19,10 +19,10 @@ import {
   KIT, KitButton, KitGlass, animateKitButtons, applyKitGlass, easeOutBack, kitCard, kitGlass, kitText, placeInView, smooth, styleKitButton, withAlpha,
 } from "../StudioCardKit";
 import { CookEvents } from "./CookWorld";
-import { CookRuntimeEvents } from "./CookRuntime";
+import { CookRuntime, CookRuntimeEvents } from "./CookRuntime";
 
 const CARD_W = 10.4;
-const CARD_H = 6.0;
+const CARD_H = 6.8;
 const MAX_DOTS = 14;
 const IN_SEC = 0.3;
 const BTN_W = 4.4;
@@ -68,6 +68,7 @@ export class CookStepCard extends BaseScriptComponent {
   private actionText: Text | null = null;
   private titleText: Text | null = null;
   private bodyText: Text | null = null;
+  private nextText: Text | null = null;
   private dots: KitGlass[] = [];
   private doBtn: KitButton | null = null;
   private autoBtn: KitButton | null = null;
@@ -164,6 +165,11 @@ export class CookStepCard extends BaseScriptComponent {
     this.finished = false;
     this.shownStep = "";
     this.setTexts(`${this.total} STEPS`, "", plan ? String(plan.dishTitle || "Ready to cook") : "Ready to cook", "Pinch Do step for one step at a time, or Auto to cook the whole dish.", KIT.EMERALD);
+    // CookRuntime may not have started this world yet (listener order): read the first step from the plan itself
+    if (this.nextText) {
+      const first = plan && Array.isArray(plan.steps) && plan.steps.length > 0 ? plan.steps[0] : null;
+      this.nextText.text = first ? `NEXT: ${String(first.title || first.action || "").slice(0, 44)}` : "";
+    }
     this.show();
   }
 
@@ -188,6 +194,7 @@ export class CookStepCard extends BaseScriptComponent {
     const i = typeof d.index === "number" ? d.index : -1;
     if (i >= 0 && i < this.dotState.length) this.dotState[i] = "done";
     this.layoutDots();
+    this.refreshNext();
   }
 
   private onFinished(): void {
@@ -212,6 +219,7 @@ export class CookStepCard extends BaseScriptComponent {
     this.actionText = kitText(root, "CookStepCard_Action", "", 24, KIT.MUTED, new vec3(inner / 2 - 2.0, top - 0.55, 0.03), 4.0, 0.7, { align: "right", weight: 800 });
     this.titleText = kitText(root, "CookStepCard_Title", "", 42, KIT.TEXT, new vec3(0, top - 1.4, 0.03), inner, 0.95, { align: "left", weight: 800 });
     this.bodyText = kitText(root, "CookStepCard_Body", "", 26, withAlpha(KIT.TEXT, 0.86), new vec3(0, top - 2.65, 0.03), inner, 1.4, { align: "left", wrap: true, weight: 600 });
+    this.nextText = kitText(root, "CookStepCard_Next", "", 24, KIT.GOLD, new vec3(0, -0.4, 0.03), inner, 0.7, { align: "left", weight: 800 });
     const prog = global.scene.createSceneObject("CookStepCard_Progress");
     prog.setParent(root);
     prog.getTransform().setLocalPosition(new vec3(0, -CARD_H / 2 + 2.05, 0.02));
@@ -269,12 +277,37 @@ export class CookStepCard extends BaseScriptComponent {
     if (this.actionText) this.actionText.text = action;
     if (this.titleText) this.titleText.text = title;
     if (this.bodyText) this.bodyText.text = body;
+    this.refreshNext();
     if (this.cardGlass) {
       this.cardGlass.border = withAlpha(accent, 0.92);
       applyKitGlass(this.cardGlass);
     }
     this.layoutDots();
     this.refreshButtons();
+  }
+
+  /** "NEXT: <title>" for the first step that has not started yet (what the next pinch will do). */
+  private refreshNext(): void {
+    if (!this.nextText) return;
+    let txt = "";
+    try {
+      const rt = CookRuntime.getInstance();
+      const w = rt ? rt.getWorld() : null;
+      if (rt && w && !this.finished) {
+        const pend = rt.getState().pending;
+        if (pend.length > 0) {
+          for (const s of w.plan.steps || []) {
+            if (s && s.id === pend[0]) {
+              txt = `NEXT: ${String(s.title || s.action || "").slice(0, 44)}`;
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      txt = "";
+    }
+    this.nextText.text = txt;
   }
 
   private layoutDots(): void {

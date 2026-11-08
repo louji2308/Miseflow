@@ -13,18 +13,37 @@ export type AiJob = "compiler" | "vision" | "coach" | "synthesizer" | "director"
 
 export const AiModelConfig: { [job: string]: string } = {
   /** Dish recipe compiler (RecipeCompilerService): free text -> UniversalDishBlueprint JSON. */
-  compiler: "claude-sonnet-5-5",
+  compiler: "claude-opus-5-5",
   /** Sear / doneness vision probe (RapidRouterVisionService). */
-  vision: "claude-sonnet-5-5",
+  vision: "claude-opus-5-5",
   /** Chef coach voice lines (ChefVoiceBanner / CHEF_COACH_SPEAK). */
-  coach: "claude-sonnet-5-5",
+  coach: "claude-opus-5-5",
   /** Page-fault ingredient synthesizer (AssetPageTable, Part 2). */
-  synthesizer: "claude-sonnet-5-5",
+  synthesizer: "claude-opus-5-5",
   /** Chef Director (Cook/CookDirectorService): dish request -> CookPlan JSON (equipment, tools, ingredients, steps). */
-  director: "claude-sonnet-5-5",
+  director: "claude-opus-5-5",
   /** Shape Smith (Cook ShapeRecipe calls): ingredient / vessel -> small procedural ShapeRecipe JSON. */
-  smith: "claude-sonnet-5-5",
+  smith: "claude-opus-5-5",
 };
+
+/**
+ * Reasoning effort per job (output_config.effort). "high" for quality; "xhigh" is accepted by the API for Opus 5.5 but roughly
+ * doubles latency again (a full CookPlan measured ~33 s at high vs ~59 s at xhigh from a command line, about 2x that inside Lens).
+ */
+export const AiEffortConfig: { [job: string]: string } = {
+  compiler: "high",
+  vision: "high",
+  coach: "high",
+  synthesizer: "medium", // tiny structured calls; keeps ingredient synthesis inside its timeout
+  director: "high",
+  smith: "high",
+};
+
+/** Configured effort for a job (defaults to "medium"). */
+export function getEffort(job: AiJob): string {
+  const e = AiEffortConfig[job];
+  return typeof e === "string" && e.length > 0 ? e : "medium";
+}
 
 /** Configured model id for a job ("" = not configured). */
 export function getModel(job: AiJob): string {

@@ -20,6 +20,7 @@ import { DishNoodlesCookScenario } from "./DishNoodlesCookScenario";
 import { LiveAiCompileScenario } from "./LiveAiCompileScenario";
 import { CookPlanDishScenario } from "./CookPlanDishScenario";
 import { ShapeGalleryScenario } from "./ShapeGalleryScenario";
+import { AssetGalleryScenario } from "./AssetGalleryScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -115,6 +116,11 @@ export class LeafIndex extends BaseScriptComponent {
     {
       id: "shape-gallery",
       typename: ShapeGalleryScenario.getTypeName(),
+      parameters: { hold: "0" },
+    },
+    {
+      id: "asset-gallery",
+      typename: AssetGalleryScenario.getTypeName(),
       parameters: { hold: "0" },
     },
   ];

@@ -53,7 +53,7 @@ const LEAF_GREEN: Rgb = [0.16, 0.5, 0.14];
 
 /** ONE data table: access number -> generator + colours + surface. */
 export const VEG_GENERATOR_TABLE: VegGenSpec[] = [
-  { n: 101, arch: "BULB_ALLIUM", gen: "ONION", rgb: [0.66, 0.3, 0.5], accent: LEAF_GREEN, detail: [0.93, 0.82, 0.88], rough: 0.3, metal: 0, classic: true, base: "onion", variants: [["shallot", "SHALLOT"]] },
+  { n: 101, arch: "BULB_ALLIUM", gen: "ONION", rgb: [0.66, 0.3, 0.5], accent: LEAF_GREEN, detail: [0.93, 0.82, 0.88], rough: 0.5, metal: 0, classic: true, base: "onion", variants: [["shallot", "SHALLOT"]] },
   { n: 102, arch: "BULB_ALLIUM", gen: "GARLIC", rgb: [0.96, 0.92, 0.78], accent: LEAF_GREEN, detail: null, rough: 0.35, metal: 0, classic: true },
   { n: 103, arch: "LEAFY_HERB", gen: "HERB", rgb: [0.16, 0.5, 0.14], accent: LEAF_GREEN, detail: null, rough: 0.45, metal: 0, classic: true },
   { n: 104, arch: "SPHERE_CROWN", gen: "TOMATO", rgb: [0.9, 0.13, 0.07], accent: LEAF_GREEN, detail: null, rough: 0.18, metal: 0.05, classic: true },
@@ -740,8 +740,13 @@ function genAvocado(S: VegParts[]): void {
 function genPotato(S: VegParts[]): void {
   // earthy lumpy tuber -> wedges -> steak-fry batons
   S[0].b.ellipsoid(0, 0.5, 0, 0.72, 0.5, 1.0, 12, 5, 0.3, 0, 3, 0.08);
-  const eyes: Pt[] = [[0.45, 0.75, 0.3], [-0.4, 0.8, -0.35], [0.2, 0.9, -0.6], [-0.3, 0.7, 0.6]];
-  for (const e of eyes) S[0].a.ellipsoid(e[0], e[1], e[2], 0.07, 0.04, 0.07, 5, 2);
+  // shallow eyes seated ON the skin (the old ones sat inside the tuber), rotated with the body yaw
+  const eyes: [number, number][] = [[0.9, 0.4], [1.2, 2.2], [0.7, 3.6], [1.6, 4.9], [1.05, 1.3], [1.45, 5.8]];
+  const cy = Math.cos(0.3), sy = Math.sin(0.3);
+  for (const [th, ph] of eyes) {
+    const x = 0.72 * Math.sin(th) * Math.cos(ph), y = 0.5 + 0.5 * Math.cos(th), z = 1.0 * Math.sin(th) * Math.sin(ph);
+    S[0].a.ellipsoid(x * cy + z * sy, y, -x * sy + z * cy, 0.075, 0.045, 0.075, 5, 2);
+  }
   const p = S[1];
   for (let k = 0; k < 4; k++) {
     const x = -0.6 + 0.4 * k, z = (k % 2) * 0.4 - 0.2, yaw = 0.25 * (k - 1.5);
