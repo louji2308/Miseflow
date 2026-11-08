@@ -2,9 +2,3 @@
 .env
 .env.*
 !.env.example
-
-# Local tooling copies (not part of the Lens)
-.agents/
-agent/
-.claude/
-skills-lock.json
