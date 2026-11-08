@@ -179,6 +179,7 @@ class EqImpl implements EquipmentHandle {
   private t: number = 0;
   private steam: SteamPlume | null = null;
   private steamAmt: number = 0;
+  private steamDecayPerSec: number = 0;
   private oilObj: SceneObject | null = null;
   private oilMat: Material | null = null;
   private oilLevel01: number = 0;
@@ -273,8 +274,9 @@ class EqImpl implements EquipmentHandle {
     for (const b of this.bubbles) b.o.enabled = this.bubbling > 0.01;
   }
 
-  setSteam(amount01: number): void {
+  setSteam(amount01: number, decaySec: number = 0): void {
     this.steamAmt = clamp01(amount01);
+    this.steamDecayPerSec = decaySec > 0 ? this.steamAmt / decaySec : 0;
     if (this.steamAmt > 0.001 && !this.steam) {
       const r = this.radiusCm;
       this.steam = new SteamPlume(this.obj, `Cook_${this.id}_SteamRoot`, `Cook_${this.id}_Steam`, {
@@ -304,8 +306,13 @@ class EqImpl implements EquipmentHandle {
     this.t += dt;
     const hk = HEAT_K[this.heat] || 0;
     if (this.burnerMat && hk > 0) this.applyBurner(1 + 0.18 * hk * Math.sin(this.t * (3 + 3 * hk)));
+    if (this.steamDecayPerSec > 0 && this.steamAmt > 0) {
+      this.steamAmt = Math.max(0, this.steamAmt - this.steamDecayPerSec * dt);
+      if (this.steamAmt <= 0) this.steamDecayPerSec = 0;
+    }
     if (this.steam) {
-      this.steam.target = this.steamAmt * (0.55 + 0.45 * hk);
+      // a vessel with no burner under it (plate, bowl) shows the steam at full strength; a burner vessel scales with its heat
+      this.steam.target = this.steamAmt * (this.burnerMat ? 0.55 + 0.45 * hk : 1);
       this.steam.update(dt);
     }
     if (this.oilObj && this.oilObj.enabled && this.oilMat) {

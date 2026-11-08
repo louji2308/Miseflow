@@ -44,8 +44,8 @@ export interface EquipmentHandle {
   setHeat(level: HeatLevel): void;
   /** oil depth 0..1 (0 = none) and bubbling intensity 0..1 */
   setOil(level01: number, bubbling01: number): void;
-  /** steam plume intensity 0..1 */
-  setSteam(amount01: number): void;
+  /** steam plume intensity 0..1; with decaySec > 0 it fades to nothing over that many seconds (hot food on a plate) */
+  setSteam(amount01: number, decaySec?: number): void;
   /** liquid / content fill 0..1 with an RGB tint (batter, sauce, water) */
   setFill(level01: number, color: vec3): void;
   /** current oil depth 0..1 (0 = no oil) */

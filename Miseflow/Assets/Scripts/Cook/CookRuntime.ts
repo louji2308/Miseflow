@@ -31,6 +31,12 @@ export const CookRuntimeEvents = {
 
 export const STEP_DWELL_SEC = 0.8;
 
+/** Baseline steam over a heated vessel while a step of this action runs (actions with their own steam override it). */
+const STEAM_BASE: { [action: string]: number } = {
+  HEAT_OIL: 0.18, DEEP_FRY: 0.55, SHALLOW_FRY: 0.4, BOIL: 0.85, SIMMER: 0.6, SAUTE_TOSS: 0.45, TEMPER: 0.4, COOK_FLAT: 0.25,
+  FLIP: 0.3, MIX: 0.3, WHISK: 0.3, POUR: 0.35, SEASON: 0.2, STEAM_DUM: 0.6, GENERIC: 0.25,
+};
+
 type StepStatus = "pending" | "running" | "dwell" | "done";
 
 interface RunRec {
@@ -75,6 +81,8 @@ export class CookRuntime extends BaseScriptComponent {
   autoDefault: boolean = false;
 
   private static instance: CookRuntime | null = null;
+  /** The speed set in the inspector: every new dish and every exit goes back to it (tests / dev may raise it meanwhile). */
+  private baseSpeed: number = 1;
 
   private bus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
   private handlers: { ev: MiseFlowEventType; cb: (d?: any) => void }[] = [];
@@ -101,6 +109,7 @@ export class CookRuntime extends BaseScriptComponent {
 
   onAwake(): void {
     CookRuntime.instance = this;
+    this.baseSpeed = isFinite(this.speed) && this.speed > 0 ? this.speed : 1;
     this.auto = !!this.autoDefault;
     this.listen(CookEvents.WORLD_READY, (d?: any) => {
       if (d && d.world) this.startWorld(d.world as CookWorld);
@@ -153,6 +162,10 @@ export class CookRuntime extends BaseScriptComponent {
     return this.items;
   }
 
+  public getSpeed(): number {
+    return this.speed;
+  }
+
   public isAuto(): boolean {
     return this.auto;
   }
@@ -181,6 +194,9 @@ export class CookRuntime extends BaseScriptComponent {
   public startWorld(world: CookWorld): void {
     this.cancelAll();
     this.reset();
+    // a new dish always starts at normal speed in MANUAL mode (a previous test or session may have left AUTO / a fast speed on)
+    this.speed = this.baseSpeed;
+    this.setAuto(!!this.autoDefault);
     this.world = world;
     this.items = new ItemState(world);
     const plan = world.plan;
@@ -204,6 +220,8 @@ export class CookRuntime extends BaseScriptComponent {
     const had = !!this.world;
     this.cancelAll();
     this.reset();
+    this.speed = this.baseSpeed;
+    this.setAuto(!!this.autoDefault);
     if (had) print("[CookRuntime] exit: cancelled and reset");
   }
 
@@ -373,6 +391,17 @@ export class CookRuntime extends BaseScriptComponent {
         }
       }
     }
+    // steam wherever the food is hot: over a heated vessel while a step cooks in it, fading when its heat goes off
+    if (eq && this.onBurner(eq.id)) {
+      try {
+        const hot = String(s.heat || "").toUpperCase() !== "OFF";
+        const base = STEAM_BASE[action.name];
+        if (hot && base !== undefined) eq.setSteam(base);
+        else if (!hot) eq.setSteam(0.25, 3);
+      } catch (e) {
+        print(`[CookRuntime] setSteam failed: ${e}`);
+      }
+    }
     this.bus.emit(ev(CookEvents.STEP_STARTED), {
       stepId: s.id, index: index, total: total, action: action.name, title: s.title || action.name, whatWhy: s.whatWhy || "", equipmentId: s.equipmentId || (eq ? eq.id : ""),
     });
@@ -502,7 +531,10 @@ export class CookRuntime extends BaseScriptComponent {
       this.showItems(all);
       for (const id in w.equipment) {
         try {
-          if (this.onBurner(id)) w.equipment[id].setHeat("OFF");
+          if (this.onBurner(id)) {
+            w.equipment[id].setHeat("OFF");
+            w.equipment[id].setSteam(0.2, 4); // the last wisps rise and fade
+          }
         } catch (e) {
           // ignore
         }

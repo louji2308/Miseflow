@@ -18,7 +18,7 @@ function sceneHas(name: string): boolean {
 }
 import { MiseFlowLeafInteractor } from "./MiseFlowLeafInteractor";
 
-const DISHES = ["chicken 65", "chapathi", "tomato soup", "poori"];
+const DISHES = ["chicken 65", "chapathi", "tomato soup", "poori", "athirasam"];
 
 /**
  * CookPlanDishScenario.ts  (ids "cook-plan-chicken65" dish=0, "cook-plan-chapathi" dish=1, "cook-plan-generic" dish=2)
@@ -93,13 +93,15 @@ export class CookPlanDishScenario extends Scenario {
       await sleep(250);
       await interactor.tapButton("Btn_StudioConfirm");
       for (let i = 0; i < 160 && !plan && !notFound; i++) await sleep(500);
-      if (!plan && notFound && which === 2) {
+      if (!plan && notFound && (which === 2 || which === 4)) {
         print("[LEAF] CookPlanDishScenario generic dish skipped: no live Director (no key / model). completed successfully");
         return;
       }
       expect(!!plan).toBe(true);
       print(`[CookScenario] plan "${plan.dishTitle}" steps=${plan.steps.length} equipment=${plan.equipment.length} ingredients=${plan.ingredients.length}`);
       expect(plan.steps.length >= 4).toBe(true);
+      print(`[CookScenario] PLAN ${plan.steps.map((st: any) => `${st.id}:${st.action}@${st.equipmentId}[${(st.ingredientIds || []).join("+")}]`).join(" > ")}`);
+      print(`[CookScenario] ITEMS ${plan.ingredients.map((g: any) => `${g.id}:${g.role}:${g.form}`).join(" | ")}`);
 
       // briefing deck shows the steps, the legacy setup stays collapsed
       for (let i = 0; i < 20 && !deck.isOpen(); i++) await sleep(300);
@@ -125,6 +127,9 @@ export class CookPlanDishScenario extends Scenario {
       expect(Object.keys(world.equipment).length).toBe(plan.equipment.length);
       expect(root.getTransform().getWorldScale().x < 0.01).toBe(true); // legacy setup stays hidden in Cook mode
 
+      // a new dish starts at normal speed in MANUAL mode (nothing a previous test left behind)
+      expect(runtime.isAuto()).toBe(false);
+      expect(runtime.getSpeed()).toBe(1);
       // every tool and vessel must rest fully on the slab (no tool left floating off the bench)
       {
         const inv = world.root.getTransform().getInvertedWorldTransform();
@@ -169,6 +174,18 @@ export class CookPlanDishScenario extends Scenario {
       expect(started.length).toBe(plan.steps.length);
       expect(done.length).toBe(plan.steps.length);
       expect(s.errors).toBe(0);
+      // where does every item end? (distance from the plate and from each burner vessel, cm)
+      {
+        const rep: string[] = [];
+        const pf2 = world.equipment[plan.plateEquipmentId] ? world.equipment[plan.plateEquipmentId].floorWorld() : world.plate.floorWorld();
+        for (const id in world.items) {
+          const it = world.items[id];
+          const q = it.obj.getTransform().getWorldPosition();
+          const dP = Math.sqrt((q.x - pf2.x) ** 2 + (q.z - pf2.z) ** 2);
+          rep.push(`${id}(${it.role}) plate=${dP.toFixed(1)} vis=${it.obj.enabled}`);
+        }
+        print(`[CookScenario] ENDPOS ${rep.join(" | ")}`);
+      }
       // stray-object audit: nothing visible may float off the bench or high above it once the cook is over
       {
         const inv2 = world.root.getTransform().getInvertedWorldTransform();
@@ -229,6 +246,8 @@ export class CookPlanDishScenario extends Scenario {
       expect(Math.abs(sc.x - scale0.x) < 1e-5).toBe(true);
       expect(DishBlueprintApplier.getActiveBlueprint().dishId.indexOf("01_") === 0).toBe(true);
     } finally {
+      runtime.setSpeed(1);
+      bus.emit("COOK_AUTO", { on: false });
       bus.off("COOK_PLAN_READY", onPlan);
       bus.off("COOK_WORLD_READY", onWorld);
       bus.off("COOK_FINISHED", onFin);

@@ -119,6 +119,11 @@ export class LeafIndex extends BaseScriptComponent {
       parameters: { dish: "3", hold: "0" },
     },
     {
+      id: "cook-plan-athirasam",
+      typename: CookPlanDishScenario.getTypeName(),
+      parameters: { dish: "4", hold: "0" },
+    },
+    {
       id: "shape-gallery",
       typename: ShapeGalleryScenario.getTypeName(),
       parameters: { hold: "0" },

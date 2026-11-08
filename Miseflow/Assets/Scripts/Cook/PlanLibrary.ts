@@ -267,8 +267,79 @@ export const POORI_PLAN: CookPlan = {
   garnishIds: [],
 };
 
+/** Athirasam: jaggery-rice dough patted into small discs, deep fried, lifted out onto the plate. */
+export const ATHIRASAM_PLAN: CookPlan = {
+  found: true,
+  notFoundMessage: "",
+  dishTitle: "Athirasam",
+  cuisineTag: "South Indian sweet",
+  equipment: [
+    { id: "dough_bowl", kind: "BOWL", role: "dough bowl", burner: 0 },
+    { id: "board", kind: "BOARD", role: "shaping board", burner: 0 },
+    { id: "kadai", kind: "KADAI", role: "frying kadai", burner: 1 },
+    { id: "plate", kind: "PLATE", role: "serving plate", burner: 0 },
+  ],
+  tools: [
+    { id: "rolling_pin", kind: "ROLLING_PIN" },
+    { id: "skimmer", kind: "SKIMMER" },
+  ],
+  ingredients: [
+    { id: "rice_flour", name: "rice flour", role: "FLOUR", form: "fine white rice flour", catalogueHint: 0, colorRaw: [0.97, 0.95, 0.88], colorDone: [0.97, 0.95, 0.88], amount: "1 cup" },
+    { id: "jaggery", name: "jaggery syrup", role: "LIQUID", form: "thick dark amber syrup", catalogueHint: 0, colorRaw: [0.75, 0.42, 0.14], colorDone: [0.75, 0.42, 0.14], amount: "3/4 cup" },
+    { id: "cardamom", name: "cardamom powder", role: "SPICE", form: "fine pale green powder", catalogueHint: 161, colorRaw: [0.7, 0.8, 0.5], colorDone: [0.7, 0.8, 0.5], amount: "1/2 tsp" },
+    { id: "oil", name: "frying oil", role: "OIL", form: "clear golden oil", catalogueHint: 165, colorRaw: [0.95, 0.8, 0.25], colorDone: [0.9, 0.65, 0.15], amount: "500 ml" },
+    { id: "dough", name: "athirasam dough", role: "DOUGH", form: "soft round dough ball becoming a small flat round disc", catalogueHint: 120, colorRaw: [0.85, 0.62, 0.35], colorDone: [0.55, 0.3, 0.12], amount: "1 ball" },
+  ],
+  steps: [
+    {
+      id: "mix", action: "MIX", title: "Mix flour and jaggery",
+      whatWhy: "Stir the rice flour into warm jaggery syrup with cardamom until it comes together.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["rice_flour", "jaggery", "cardamom"],
+      fromId: "", toId: "", durationSec: 7, heat: "OFF", count: 0, after: [],
+    },
+    {
+      id: "knead", action: "KNEAD", title: "Knead a soft dough",
+      whatWhy: "Knead into a soft, sticky dough; the jaggery syrup sweetens it and holds the flour.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["dough"],
+      fromId: "", toId: "", durationSec: 6, heat: "OFF", count: 3, after: ["mix"],
+    },
+    {
+      id: "rest", action: "REST", title: "Rest the dough",
+      whatWhy: "Rest for a few hours in real life; the flour soaks up the syrup so the discs hold together in the oil.",
+      equipmentId: "dough_bowl", toolId: "", ingredientIds: ["dough"],
+      fromId: "", toId: "", durationSec: 4, heat: "OFF", count: 0, after: ["knead"],
+    },
+    {
+      id: "heat_oil", action: "HEAT_OIL", title: "Heat the oil",
+      whatWhy: "Medium-hot oil lets the discs cook through and turn deep brown without burning the jaggery.",
+      equipmentId: "kadai", toolId: "", ingredientIds: ["oil"],
+      fromId: "", toId: "", durationSec: 6, heat: "MED", count: 0, after: ["rest"],
+    },
+    {
+      id: "shape", action: "ROLL_DOUGH", title: "Pat into a small disc",
+      whatWhy: "Flatten a ball into a small, even disc; an even thickness cooks through at the same speed.",
+      equipmentId: "board", toolId: "rolling_pin", ingredientIds: ["dough"],
+      fromId: "dough_bowl", toId: "", durationSec: 6, heat: "OFF", count: 3, after: ["rest"],
+    },
+    {
+      id: "fry", action: "DEEP_FRY", title: "Deep fry until deep brown",
+      whatWhy: "Fry the disc, turning it once, until deep brown; press out the extra oil before it comes out.",
+      equipmentId: "kadai", toolId: "skimmer", ingredientIds: ["dough", "oil"],
+      fromId: "board", toId: "", durationSec: 12, heat: "MED", count: 1, after: ["shape", "heat_oil"],
+    },
+    {
+      id: "plate_dish", action: "PLATE", title: "Plate the athirasam",
+      whatWhy: "Serve warm; the athirasam is crisp at the edge and soft in the middle.",
+      equipmentId: "plate", toolId: "", ingredientIds: ["dough"],
+      fromId: "kadai", toId: "", durationSec: 3, heat: "OFF", count: 0, after: ["fry"],
+    },
+  ],
+  plateEquipmentId: "plate",
+  garnishIds: [],
+};
+
 /** Every fixture, in lookup order. */
-export const LIBRARY_PLANS: CookPlan[] = [CHICKEN_65_PLAN, CHAPATHI_PLAN, POORI_PLAN];
+export const LIBRARY_PLANS: CookPlan[] = [CHICKEN_65_PLAN, CHAPATHI_PLAN, POORI_PLAN, ATHIRASAM_PLAN];
 
 /** Normalised aliases -> fixture. Keys go through normalizeQuery, so write them in plain lowercase words. */
 const ALIASES: { [alias: string]: CookPlan } = Object.create(null);
@@ -292,6 +363,7 @@ export function normalizeQuery(query: string): string {
 }
 
 addAliases(CHICKEN_65_PLAN, ["chicken 65", "chicken65", "chicken sixty five", "chicken sixtyfive", "chicken 65 recipe", "hyderabadi chicken 65", "andhra chicken 65"]);
+addAliases(ATHIRASAM_PLAN, ["athirasam", "adhirasam", "athirsam", "athirasam recipe", "adhirasam recipe", "ariselu", "anarsa"]);
 addAliases(POORI_PLAN, ["poori", "puri", "pooris", "puris", "poori recipe", "puri recipe", "fried puri", "fried poori"]);
 addAliases(CHAPATHI_PLAN, [
   "chapathi", "chapati", "chappathi", "chapatti", "chapathis", "chapatis", "roti", "rotis", "phulka", "phulkas", "fulka",

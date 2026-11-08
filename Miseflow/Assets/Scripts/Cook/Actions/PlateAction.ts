@@ -8,15 +8,21 @@ import {
 } from "./CookActionKit";
 import { ItemHandle } from "../CookWorld";
 import { flatPiece } from "./CookFlatAction";
+import { flatFryTargets, isFlatPiece } from "./FlatFryKit";
 
 export function plateFood(ctx: CookActionContext): ItemHandle[] {
   const garnish = ctx.world.plan && ctx.world.plan.garnishIds ? ctx.world.plan.garnishIds : [];
-  let food = itemsByRole(ctx.items, SOLID_ROLES).filter((it) => garnish.indexOf(it.id) < 0 && it.role !== "GARNISH");
-  if (food.length === 0) {
-    const all: ItemHandle[] = [];
-    for (const id in ctx.world.items) all.push(ctx.world.items[id]);
-    food = itemsByRole(all, ["PROTEIN", "VEG", "DOUGH"]).filter((it) => garnish.indexOf(it.id) < 0);
-  }
+  const notGarnish = (it: ItemHandle): boolean => garnish.indexOf(it.id) < 0 && it.role !== "GARNISH";
+  const all: ItemHandle[] = [];
+  for (const id in ctx.world.items) all.push(ctx.world.items[id]);
+  // 1. the step's own solid food; 2. any solid food of the dish
+  let food = itemsByRole(ctx.items, SOLID_ROLES).filter(notGarnish);
+  if (food.length === 0) food = itemsByRole(all, ["PROTEIN", "VEG", "DOUGH"]).filter(notGarnish);
+  // 3. whatever the step lists that is not a liquid / oil / spice (a model may call a fried disc FLOUR or DAIRY)
+  const NOT_FOOD = ["OIL", "LIQUID", "SPICE"];
+  if (food.length === 0) food = ctx.items.filter((it) => NOT_FOOD.indexOf(it.role) < 0 && notGarnish(it));
+  // 4. anything that was actually cooked (its look moved past raw) and is not a liquid / oil / spice
+  if (food.length === 0) food = all.filter((it) => NOT_FOOD.indexOf(it.role) < 0 && notGarnish(it) && ctx.state.getKey(it.id) !== "raw");
   return food;
 }
 
@@ -28,8 +34,10 @@ export const PlateAction: CookAction = {
     const D = Math.max(2, ctx.dur);
     const food = plateFood(ctx);
     const spot = ctx.world.platingSpot ? ctx.world.platingSpot() : plate.floorWorld();
-    const flats = food.filter((it) => it.role === "DOUGH");
-    const others = food.filter((it) => it.role !== "DOUGH");
+    // flat food (rolled / patted discs, whatever role the plan gave it) is stacked as ONE object per item, the same object the fry moved
+    const isFlat = (it: ItemHandle): boolean => it.role === "DOUGH" || (flatFryTargets([it]).length > 0 && flatFryTargets([it]).every((o) => isFlatPiece(o)));
+    const flats = food.filter(isFlat);
+    const others = food.filter((it) => !isFlat(it));
     const objs: SceneObject[] = [];
     const dest: vec3[] = [];
     // stack flat items
@@ -74,6 +82,9 @@ export const PlateAction: CookAction = {
     });
     for (let i = 0; i < n; i++) setWpos(objs[i], dest[i]);
     void tipWorld;
+    // hot food steams on the plate for a while (only when the recipe actually cooked it on a burner)
+    const hot = (ctx.world.plan.steps || []).some((st) => !!st.heat && String(st.heat).toUpperCase() !== "OFF");
+    if (hot) plate.setSteam(0.5, 16);
     await toolHome(ctx, tool, 0.6);
   },
 };
