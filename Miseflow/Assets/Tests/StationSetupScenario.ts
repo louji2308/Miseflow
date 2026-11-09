@@ -1,7 +1,9 @@
+import { Button } from "SpectaclesUIKit.lspkg/Scripts/Components/Button/Button";
 import { Scenario } from "Leaf.lspkg/Scenarios/scenario/Scenario";
 import { expect } from "Leaf.lspkg/Utils/common/Expect";
 import { findSceneObjectByName, sleep } from "Leaf.lspkg/Utils/common/Utils";
 import { HeadPoseBillboard } from "../Scripts/HeadPoseBillboard";
+import { StationTargetHub, TARGET_COLLIDER_CM } from "../Scripts/StationTarget";
 
 const RAD = Math.PI / 180;
 
@@ -88,8 +90,25 @@ export class StationSetupScenario extends Scenario {
 
     // v7 Stage 1B: live head-pose billboarding. A head 40 cm to the right must swing the skillet pill's yaw,
     // keep its fixed 14 deg pitch, and leave the flush rings alone. The hook is always cleared.
-    const pill = findSceneObjectByName("SkilletStationUI");
-    expect(pill, "SkilletStationUI missing").toBeTruthy();
+    // v7 Stage 3: the pills now live in the hidden LegacyUiVault (scale 0.0001, names and text updates intact); the live
+    // billboard is asserted on the Skillet StationTarget, which is the visible face of that station.
+    const legacyPill = findSceneObjectByName("SkilletStationUI");
+    expect(legacyPill, "SkilletStationUI must still exist (hidden, not destroyed)").toBeTruthy();
+    expect(legacyPill.getTransform().getWorldScale().x < 0.01, "SkilletStationUI must be hidden in the vault").toBe(true);
+    const hub = StationTargetHub.getInstance();
+    expect(hub, "StationTargetHub missing").toBeTruthy();
+    const targets = hub.getLegacyTargets();
+    expect(targets.length, "one StationTarget per legacy station").toBe(4);
+    for (const n of ["Skillet", "Saucepot", "Prep", "Plate"]) {
+      const o = findSceneObjectByName(`StationTarget_${n}`);
+      expect(o, `StationTarget_${n} missing`).toBeTruthy();
+      expect(o.isEnabledInHierarchy, `StationTarget_${n} must be shown`).toBe(true);
+    }
+    for (const t of targets) {
+      expect(t.getColliderCm() >= TARGET_COLLIDER_CM - 0.001, `${t.id} collider ${t.getColliderCm()} cm < 4.5`).toBe(true);
+      expect(!!t.getButtonObject().getComponent(Button.getTypeName()), `${t.id} has no UIKit button`).toBe(true);
+    }
+    const pill = findSceneObjectByName("StationTarget_Skillet");
     const ringNames = ["DiegeticChronoRingRoot", "BurnerArcs_Sear", "BurnerArcs_Simmer"];
     const rings: { obj: SceneObject; rot: quat }[] = [];
     for (const n of ringNames) {
@@ -105,8 +124,8 @@ export class StationSetupScenario extends Scenario {
       await sleep(500);
       const after = facingDeg(pill);
       const dYaw = Math.abs(wrap180(after.yaw - before.yaw));
-      expect(dYaw > 5, `pill yaw changed only ${dYaw} deg for a 40 cm head move`).toBe(true);
-      expect(Math.abs(after.pitch - 14) <= 1, `pill pitch ${after.pitch} deg, expected 14 +-1`).toBe(true);
+      expect(dYaw > 5, `target yaw changed only ${dYaw} deg for a 40 cm head move`).toBe(true);
+      expect(Math.abs(after.pitch - 14) <= 1, `target pitch ${after.pitch} deg, expected 14 +-1`).toBe(true);
       for (const r of rings) {
         const q = r.obj.getTransform().getLocalRotation();
         const dot = Math.abs(q.x * r.rot.x + q.y * r.rot.y + q.z * r.rot.z + q.w * r.rot.w);
@@ -121,6 +140,6 @@ export class StationSetupScenario extends Scenario {
     expect(camAfter.total <= camBefore.total, `Camera Object grew from ${camBefore.total} to ${camAfter.total} descendants`).toBe(true);
     for (const n of camAfter.names) expect(camBefore.names.indexOf(n) !== -1, `new child under Camera Object: ${n}`).toBe(true);
 
-    print("[LEAF] Scenario 1 PASSED: All 3 stations & status labels verified.");
+    print("[LEAF] Scenario 1 PASSED: All 3 stations, status labels and 4 station targets verified.");
   }
 }

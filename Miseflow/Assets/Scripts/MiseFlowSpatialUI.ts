@@ -38,6 +38,8 @@ import { KitchenAnchorRoot } from "./KitchenAnchorRoot";
 import { ClaimController } from "./ClaimController";
 import { KitchenPersistence } from "./KitchenPersistence";
 import { HeadPoseBillboard } from "./HeadPoseBillboard";
+import { StationTargetHub, LegacyStationView, LegacyPlateView } from "./StationTarget";
+import { DirectorPalette } from "./DirectorPalette";
 
 // ============================================================================
 // MiseFlow v4 "Diegetic Cockpit" — progressive-disclosure spatial UI
@@ -102,7 +104,7 @@ const PREP_STEM_FOOT_Y = 1.6;
 const CHRONO_CENTER = new vec3(0.0, 19.0, -16.0);
 const DIRECTOR_CENTER = new vec3(0.0, -1.0, 13.4);
 // v5 ChefVoiceBannerUI: dish title + AI sous-chef cue, just below the PLATE IN capsule
-const CHEF_BANNER_CENTER = new vec3(0.0, 16.0, -15.0);
+const CHEF_BANNER_CENTER = new vec3(0.0, 24.0, -8.0); // v7 S3: raised above the station targets and pulled in so all UI sits inside the 50 x 35 x 20 cm band (was 0, 16, -15)
 const CHEF_BANNER_W = 14.8;
 const CHEF_BANNER_H = 2.5;
 const COACH_HOLD_SEC = 9.0;
@@ -276,7 +278,16 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private cookDemoToggle: boolean = false;
   private visionUntil: number = -1;
 
+  private static instance: MiseFlowSpatialUI | null = null;
+
+  /** v7 Stage 3: the pill view logic stays the single source of hints / accents; station targets read it here. */
+  public static getInstance(): MiseFlowSpatialUI | null {
+    const i = MiseFlowSpatialUI.instance;
+    return i && !isNull(i) ? i : null;
+  }
+
   onAwake(): void {
+    MiseFlowSpatialUI.instance = this;
     const root = this.getSceneObject();
     if (!root.getComponent(RapidRouterVisionService.getTypeName())) {
       root.createComponent(RapidRouterVisionService.getTypeName());
@@ -322,6 +333,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     KitchenAnchorRoot.ensure(); // v7 S1: scene-root kitchen frame at P0; adopts StationsRoot on its first Update
     ClaimController.ensure(); // v7 S2: claim flow (idle until begin(): key C in the editor, auto on device)
     KitchenPersistence.ensure(); // v7 S2: kitchen memory (empty store = no change)
+    StationTargetHub.ensure(); // v7 S3: one big target per station (pills, step cards and the dock leave the product view)
+    DirectorPalette.ensure(); // v7 S3: the dock lives on as the hidden Director palette
     let layer = findByName(root, "DiegeticLayer");
     if (!layer) {
       layer = global.scene.createSceneObject("DiegeticLayer");
@@ -524,6 +537,33 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       if (this.manualAllowed("AI Dish")) this.openDishStudio();
     });
     MiseFlowButtonTrigger.registerAction("STEP_GUIDE", () => this.toggleStepGuide());
+    StationTargetHub.setViewSource({
+      getStationView: (id) => this.getStationView(id),
+      getPlateView: () => this.getPlateView(),
+    });
+  }
+
+  /** v7 Stage 3: the pill content of a station (what the hidden pill says right now). */
+  public getStationView(id: "PREP" | "SKILLET" | "SAUCEPOT"): LegacyStationView {
+    const v = id === "SKILLET" ? this.skilletView() : id === "SAUCEPOT" ? this.sauceView() : this.prepView();
+    return {
+      metric: v.metric,
+      action: v.action,
+      accent: v.accent,
+      expanded: v.expanded,
+      key: v.key,
+      alert: v.accent.equal(COLOR_CORAL_ALERT),
+    };
+  }
+
+  /** v7 Stage 3: plate chronometer state for the plate target (06:40 + drift, plated flags). */
+  public getPlateView(): LegacyPlateView {
+    return {
+      seconds: this.plateAnchorDisplaySec,
+      shifted: this.plateAnchorTargetSec > 400,
+      done: this.isDishReady,
+      ready: this.isPlated,
+    };
   }
 
   private createGlass(
@@ -1080,6 +1120,11 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
   private bindEventListeners(): void {
     this.eventBus.on("TRIGGER_AI_VISION_PROBE", () => {
       this.triggerRealAiVisionScan();
+    });
+
+    // v7 Stage 3: the plate target's "Name a dish" opens the Dish Studio exactly like the old AI Dish button did
+    this.eventBus.on("OPEN_DISH_STUDIO", () => {
+      if (this.manualAllowed("AI Dish")) this.openDishStudio();
     });
 
     this.eventBus.on("AI_VISION_STATE_CHANGED", (data: any) => {

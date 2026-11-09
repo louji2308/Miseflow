@@ -186,6 +186,13 @@ export class CookRuntime extends BaseScriptComponent {
     return false;
   }
 
+  /** v7 Stage 3: a station target's Done pinch starts exactly this ready step (same path as COOK_DO_STEP, but vessel-specific). */
+  public startReadyStep(stepId: string): boolean {
+    if (!this.world || this.finished) return false;
+    for (const s of this.readySteps()) if (s.id === stepId) return this.startStep(s);
+    return false;
+  }
+
   public setSpeed(s: number): void {
     this.speed = isFinite(s) && s > 0 ? Math.min(20, s) : 1;
   }

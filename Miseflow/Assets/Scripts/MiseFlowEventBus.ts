@@ -331,6 +331,49 @@ export interface KitchenContentHiddenPayload {
   hidden: boolean;
 }
 
+// -- v7 Stage 3 payloads (station targets and the hidden palette) --
+/** Station id of a target: legacy dishes use the DAG stations, Cook dishes use the plan's equipment id. */
+export type TargetStationId = "PREP" | "SKILLET" | "SAUCEPOT" | "PLATING" | string;
+
+/** The Done circle of a station target was pinched (the step is advanced through StepEngine / the Cook runtime). */
+export interface StepDonePinchedPayload {
+  stationId: TargetStationId;
+  engine: "LEGACY" | "COOK";
+  dishId: string;
+  stepId: string;
+  index: number;        // 0-based step index, -1 when the target had no active step
+  source: "TARGET" | "LEAF" | "KEY";
+  advanced: boolean;    // true when a step path was triggered (false: the target had nothing to advance)
+}
+
+/** Stage 4 hand-zone sensor: a hand arrived at / left a claimed station (subscribed by the targets since Stage 3). */
+export interface HandStationPayload {
+  stationId: TargetStationId;
+  hand?: "left" | "right";
+}
+
+/** Stage 4 attention director: one alert at a time. */
+export interface AlertRaisedPayload {
+  stationId: TargetStationId;
+  kind: "HEAT_GUARD" | "STEP_START" | "TIMER_UNDER_10" | "DRIFT" | string;
+  hint?: string;
+}
+
+export interface AlertResolvedPayload {
+  stationId: TargetStationId;
+  how?: "GAZE" | "HAND" | "DONE" | string;
+}
+
+/** The plate target's "Name a dish" action (MiseFlowSpatialUI opens the Dish Studio exactly like the old AI Dish button). */
+export interface OpenDishStudioPayload {
+  source: "TARGET" | "PALETTE" | "LEAF";
+}
+
+/** Hold-pinch 1.5 s on the plate target (or any other request): toggles the hidden Director palette. */
+export interface PaletteRequestedPayload {
+  source: "TARGET" | "KEY" | "LEAF";
+}
+
 type EventCallback = (data?: any) => void;
 
 export class MiseFlowEventBus {

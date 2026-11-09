@@ -79,6 +79,8 @@ export class CookStepCard extends BaseScriptComponent {
   private shownStep: string = "";
   private auto: boolean = false;
   private finished: boolean = false;
+  /** v7 Stage 3: station targets replace this card in the product view. It stays built and tracks its state (press / getSnapshot keep working) but its root stays disabled. */
+  private suppressed: boolean = true;
   private animK: number = 1;
   private warmup: number = 0;
 
@@ -122,6 +124,16 @@ export class CookStepCard extends BaseScriptComponent {
 
   public isVisible(): boolean {
     return this.visible;
+  }
+
+  /** Dev only (palette "Legacy HUD"): true keeps the card hidden (default in the product), false shows it again. */
+  public setSuppressed(on: boolean): void {
+    this.suppressed = on;
+    if (this.root && !isNull(this.root)) this.root.enabled = this.visible && !on;
+  }
+
+  public isSuppressed(): boolean {
+    return this.suppressed;
   }
 
   public getShownStepId(): string {
@@ -352,10 +364,11 @@ export class CookStepCard extends BaseScriptComponent {
     this.ensureBuilt();
     const r = this.root;
     if (!r) return;
-    r.enabled = true;
+    r.enabled = !this.suppressed;
     this.visible = true;
     this.animK = 0;
     this.warmup = 8;
+    if (this.suppressed) return;
     try {
       placeInView(r, CARD_W / 0.32, CARD_H / 0.32, 1.0, 0.31, 26, 80); // high above the bench, readable in a 1080p recording
     } catch (e) {

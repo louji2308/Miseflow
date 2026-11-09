@@ -23,6 +23,8 @@ import { ShapeGalleryScenario } from "./ShapeGalleryScenario";
 import { AssetGalleryScenario } from "./AssetGalleryScenario";
 import { ClaimStationsScenario } from "./ClaimStationsScenario";
 import { KitchenRecallScenario } from "./KitchenRecallScenario";
+import { SingleUiInvariantScenario } from "./SingleUiInvariantScenario";
+import { FovBudgetScenario } from "./FovBudgetScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -142,6 +144,14 @@ export class LeafIndex extends BaseScriptComponent {
     {
       id: "kitchen-recall-scenario",
       typename: KitchenRecallScenario.getTypeName(),
+    },
+    {
+      id: "single-ui-invariant-scenario",
+      typename: SingleUiInvariantScenario.getTypeName(),
+    },
+    {
+      id: "fov-budget-scenario",
+      typename: FovBudgetScenario.getTypeName(),
     },
   ];
 
