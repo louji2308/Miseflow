@@ -57,7 +57,7 @@ function priorityOf(kind: string): number {
 function hintOf(kind: string): string {
   switch (kind) {
     case "HEAT_GUARD":
-      return "Check the heat";
+      return "Lower to hold"; // v7 S5: the rail's HEAT_GUARD asks for a hold on low heat
     case "DRIFT":
       return "Verify low heat";
     case "STEP_START":

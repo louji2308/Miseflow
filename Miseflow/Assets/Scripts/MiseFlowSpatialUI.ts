@@ -11,6 +11,7 @@ import { VisionConfig } from "./AI/VisionConfig";
 import { GazeEdgeBeacon } from "./GazeEdgeBeacon";
 import { HandZoneSensor } from "./HandZoneSensor";
 import { AttentionDirector } from "./AttentionDirector";
+import { ScheduleRail } from "./ScheduleRail";
 import { DAGCounterConduit, createWorldIcon, splitMetric, layoutSplitText } from "./DAGCounterConduit";
 import { DiegeticChronoRing } from "./DiegeticChronoRing";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
@@ -339,6 +340,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     DirectorPalette.ensure(); // v7 S3: the dock lives on as the hidden Director palette
     HandZoneSensor.ensure(); // v7 S4: hands as the sensor (HAND_AT_STATION / HAND_LEFT_STATION)
     AttentionDirector.ensure(); // v7 S4: one alert at a time, spatial chime + edge arrow
+    ScheduleRail.ensure(); // v7 S5: the physical schedule rail (pucks on a pass rail under the kitchen root)
     let layer = findByName(root, "DiegeticLayer");
     if (!layer) {
       layer = global.scene.createSceneObject("DiegeticLayer");
@@ -1284,7 +1286,10 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
       return { metric: `SEAR ${t}`, action: this.aiLatestMessage.toUpperCase(), accent: COLOR_VIOLET_AI, metricColor: COLOR_TEXT_HEADING, expanded: true, key: "ai:" + this.aiLatestMessage };
     }
     if (this.isDriftActive) {
-      return { metric: `SEAR ${t}`, action: "LOWER BURNER NOW", accent: COLOR_CORAL_ALERT, metricColor: COLOR_CORAL_ALERT, expanded: true, key: "drift" };
+      // v7 S5: while the rail's HEAT_GUARD holds the pinned sear the action reads "LOWER TO HOLD" (hint contains "hold")
+      const rail = ScheduleRail.getInstance();
+      const holdOn = !!rail && rail.getHeatGuardActive();
+      return { metric: `SEAR ${t}`, action: holdOn ? "LOWER TO HOLD" : "LOWER BURNER NOW", accent: COLOR_CORAL_ALERT, metricColor: COLOR_CORAL_ALERT, expanded: true, key: holdOn ? "drift-hold" : "drift" };
     }
     if (this.isHeld) {
       return { metric: `HOLD ${t}`, action: "BURNER LOW - HELD", accent: COLOR_CYAN_PREP, metricColor: COLOR_CYAN_PREP, expanded: this.clock < this.holdExpandUntil, key: "held" };

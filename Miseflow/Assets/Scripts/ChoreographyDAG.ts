@@ -1,4 +1,5 @@
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
+import { computeBaseline, computeSchedule, HeatLevel, ScheduleInputTask, ScheduledTask, ScheduleResult } from "./ScheduleModel";
 
 export type TaskState =
   | "NOT_READY"
@@ -24,7 +25,23 @@ export interface RecipeTask {
   remainingDurationSeconds: number;
   state: TaskState;
   interruptionPolicy: InterruptionPolicy;
+  // v7 Stage 5 (schedule rail): heat / pin policy and the cook-clock facts behind the rail
+  heat?: HeatLevel;
+  pinOnHeat?: boolean;
+  driftSec?: number;
+  latenessSec?: number;
+  actualStartSec?: number;
+  actualFinishSec?: number;
+  notBeforeSec?: number;
+  pinnedStartSec?: number;
 }
+
+const HEAT_BY_TASK: { [id: string]: HeatLevel } = {
+  prep_shallots: "OFF",
+  skillet_sear_skin: "HIGH",
+  sauce_reduction: "LOW",
+  plating_garnish: "OFF",
+};
 
 /** Titles/instructions of the four fixed task keys (v5: per-dish copy, same keys). */
 interface TaskLabels {
@@ -90,7 +107,26 @@ export class ChoreographyDAG extends BaseScriptComponent {
   private bootDurations: { prep: number; sear: number; sauce: number } = { prep: 45, sear: 60, sauce: 50 };
   private activeDishId: string = DEFAULT_DISH_ID;
 
+  // v7 Stage 5: cook clock (s since the cook began, advances dt * timeMultiplier) and schedule bookkeeping
+  private cookClockSec: number = 0;
+  private cookRunning: boolean = false;
+  private cookClockPaused: boolean = false;
+  private plateTargetSec: number | null = null;
+  private scheduleRevision: number = 0;
+  private lastScheduleSig: string = "";
+  private lastLateWhole: { [id: string]: number } = {};
+  private lastLateEmitAt: number = -1;
+
+  private static instance: ChoreographyDAG | null = null;
+
+  /** v7 Stage 5: the schedule rail reads the DAG without an Inspector input. */
+  public static getInstance(): ChoreographyDAG | null {
+    const i = ChoreographyDAG.instance;
+    return i && !isNull(i) ? i : null;
+  }
+
   onAwake(): void {
+    ChoreographyDAG.instance = this;
     this.bootDurations = { prep: this.prepDurationSeconds, sear: this.skilletDurationSeconds, sauce: this.saucepotDurationSeconds };
     this.initRecipeGraph();
 
@@ -157,6 +193,16 @@ export class ChoreographyDAG extends BaseScriptComponent {
       state: "NOT_READY",
       interruptionPolicy: "WAIT_BEFORE_START"
     });
+
+    // v7 Stage 5: heat / pin policy; the sear is pinned on the burner (HEAT_GUARD holds it, never pushes it)
+    this.tasks.forEach((t) => {
+      t.heat = HEAT_BY_TASK[t.id] || "OFF";
+      t.pinOnHeat = t.id === "skillet_sear_skin";
+      t.driftSec = 0;
+      t.latenessSec = 0;
+    });
+    this.lastLateWhole = {};
+    this.scheduleRevision++;
   }
 
   private initListeners(): void {
@@ -235,6 +281,12 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.eventBus.on("RESET_REQUESTED", () => {
       this.resetEngine();
     });
+
+    // v7 Stage 5: the cook clock starts with the first prep cut or a hand at the prep station
+    this.eventBus.on("CUT_REFERENCE_STEP", () => this.beginCook("CUT"));
+    this.eventBus.on("HAND_AT_STATION", (d: any) => {
+      if (d && d.stationId === "PREP") this.beginCook("HAND");
+    });
   }
 
   // --- Core Prep Drift Resolver Logic ---
@@ -250,6 +302,7 @@ export class ChoreographyDAG extends BaseScriptComponent {
     const prepTask = this.tasks.get("prep_shallots");
     if (prepTask) {
       prepTask.remainingDurationSeconds += deltaSeconds;
+      prepTask.driftSec = (prepTask.driftSec || 0) + deltaSeconds; // v7 Stage 5: the prep puck grows by the slip
     }
 
     // 1. Check saucepot reduction (WAIT_BEFORE_START policy)
@@ -309,6 +362,7 @@ export class ChoreographyDAG extends BaseScriptComponent {
     if (prepTask && this.driftDelaySeconds > 0 && prepTask.state !== "COMPLETE") {
       prepTask.remainingDurationSeconds = Math.max(0, prepTask.remainingDurationSeconds - this.driftDelaySeconds);
     }
+    if (prepTask) prepTask.driftSec = Math.max(0, (prepTask.driftSec || 0) - this.driftDelaySeconds);
     this.driftDelaySeconds = 0;
     this.latestExplanation = "Current plan kept: original timing restored.";
     this.releaseHold();
@@ -344,6 +398,12 @@ export class ChoreographyDAG extends BaseScriptComponent {
     const task = this.tasks.get(taskId);
     if (!task) return;
 
+    // v7 Stage 5: actuals for the rail (a prep finished before the clock ran starts the clock now)
+    if (taskId === "prep_shallots" && !this.cookRunning) this.beginCook("PREP_DONE");
+    if (this.cookRunning && task.state !== "COMPLETE") {
+      if (task.actualStartSec === undefined) task.actualStartSec = this.cookClockSec;
+      task.actualFinishSec = this.cookClockSec;
+    }
     task.state = "COMPLETE";
     task.remainingDurationSeconds = 0;
     print(`[ScheduleEngine] Task '${taskId}' marked COMPLETE.`);
@@ -373,6 +433,7 @@ export class ChoreographyDAG extends BaseScriptComponent {
 
   public startTimers(): void {
     this.isRunning = true;
+    if (!this.cookRunning) this.beginCook("TIMERS");
     const skillet = this.tasks.get("skillet_sear_skin");
     if (skillet) skillet.state = "ACTIVE";
     const sauce = this.tasks.get("sauce_reduction");
@@ -388,6 +449,10 @@ export class ChoreographyDAG extends BaseScriptComponent {
     this.hasConverged = false;
     this.driftDelaySeconds = 0;
     this.latestExplanation = "";
+    this.cookClockSec = 0;
+    this.cookRunning = false;
+    this.cookClockPaused = false;
+    this.plateTargetSec = null;
     this.initRecipeGraph();
     print("[ScheduleEngine] Reset complete: tasks restored to initial state.");
   }
@@ -507,7 +572,201 @@ export class ChoreographyDAG extends BaseScriptComponent {
     }
   }
 
+  // ───────────── v7 Stage 5: cook clock, schedule, pins, lateness (the rail reads these) ─────────────
+
+  /** Starts the cook clock (idempotent). The prep task gets its actual start now. */
+  public beginCook(source: string = "MANUAL"): void {
+    if (this.cookRunning) return;
+    this.cookRunning = true;
+    const prep = this.tasks.get("prep_shallots");
+    if (prep && prep.state !== "COMPLETE" && prep.actualStartSec === undefined) prep.actualStartSec = this.cookClockSec;
+    print(`[ScheduleEngine] cook clock started at ${this.cookClockSec.toFixed(1)} s (${source})`);
+  }
+
+  public getCookClockSec(): number {
+    return this.cookClockSec;
+  }
+
+  public isCookRunning(): boolean {
+    return this.cookRunning;
+  }
+
+  /** Test hook: sets the cook clock (begins the cook) and optionally pauses its advance. */
+  public setCookClockForTest(sec: number, paused: boolean): void {
+    this.beginCook("TEST");
+    this.cookClockSec = Math.max(0, sec);
+    this.cookClockPaused = paused;
+    this.updateCookFacts();
+  }
+
+  /** Test hook: begins the cook if needed and moves the clock forward deterministically. */
+  public advanceCookClock(seconds: number): void {
+    this.beginCook("TEST");
+    this.cookClockSec += Math.max(0, seconds);
+    this.updateCookFacts();
+  }
+
+  /** Pinned = heat task on the burner (READY counts as on heat, mirroring the drift guardrail). */
+  public isPinned(taskId: string): boolean {
+    const t = this.tasks.get(taskId);
+    if (!t || !t.pinOnHeat) return false;
+    return (
+      t.state === "READY" ||
+      t.state === "ACTIVE" ||
+      t.state === "NEEDS_ATTENTION" ||
+      t.state === "PAUSED_BY_USER" ||
+      t.pinnedStartSec !== undefined
+    );
+  }
+
+  /** Natural / hand lateness input (monotonic per task). Emits TASK_LATE on whole-second crossings (<= 4 Hz). */
+  public reportLateness(taskId: string, lateBySec: number, source: string = "CLOCK"): void {
+    const t = this.tasks.get(taskId);
+    if (!t || !(lateBySec > (t.latenessSec || 0))) return;
+    t.latenessSec = lateBySec;
+    const whole = Math.floor(lateBySec);
+    const now = getTime();
+    if (whole >= 1 && whole !== this.lastLateWhole[taskId] && (this.lastLateEmitAt < 0 || now - this.lastLateEmitAt >= 0.25)) {
+      this.lastLateWhole[taskId] = whole;
+      this.lastLateEmitAt = now;
+      this.eventBus.emit("TASK_LATE", { taskId, lateBySec, source });
+    }
+  }
+
+  /** Read-back from the rail: absolute, idempotent; ignored for pinned / started / non-WAIT tasks. */
+  public setNotBefore(taskId: string, sec: number): boolean {
+    const t = this.tasks.get(taskId);
+    if (!t || this.isPinned(taskId) || t.actualStartSec !== undefined || t.state === "COMPLETE") return false;
+    if (t.interruptionPolicy !== "WAIT_BEFORE_START") return false;
+    t.notBeforeSec = Math.max(0, sec);
+    return true;
+  }
+
+  /** Stage 6 hook: user plate start (null clears). */
+  public requestPlatingTarget(plateStartSec: number | null): void {
+    this.plateTargetSec = plateStartSec === null ? null : Math.max(0, plateStartSec);
+  }
+
+  private scheduleInputs(): ScheduleInputTask[] {
+    const out: ScheduleInputTask[] = [];
+    this.tasks.forEach((t) => {
+      out.push({
+        id: t.id,
+        stationId: t.stationId,
+        title: t.title,
+        deps: t.dependencies,
+        planned: t.plannedDurationSeconds,
+        driftSec: t.driftSec || 0,
+        latenessSec: t.latenessSec || 0,
+        state: t.state,
+        policy: t.interruptionPolicy,
+        heat: t.heat || "OFF",
+        pinned: this.isPinned(t.id),
+        pinnedStartSec: t.pinnedStartSec,
+        actualStartSec: t.actualStartSec,
+        actualFinishSec: t.actualFinishSec,
+        notBeforeSec: t.notBeforeSec,
+      });
+    });
+    return out;
+  }
+
+  /** Current schedule (pure ScheduleModel); freezes the start of a heat task the first time it is pinned. */
+  public getScheduleResult(): ScheduleResult {
+    let r = computeSchedule(this.scheduleInputs(), this.cookClockSec, this.cookRunning, this.plateTargetSec);
+    let refreeze = false;
+    for (const s of r.tasks) {
+      const t = this.tasks.get(s.id);
+      if (!t) continue;
+      if (t.pinOnHeat && t.pinnedStartSec === undefined && this.isPinned(t.id)) {
+        t.pinnedStartSec = s.start;
+        refreeze = true;
+      }
+      if (t.notBeforeSec !== undefined && s.asapNoNotBefore >= t.notBeforeSec - 0.01) {
+        t.notBeforeSec = undefined; // its own ASAP already reaches it
+        refreeze = true;
+      }
+    }
+    if (refreeze) r = computeSchedule(this.scheduleInputs(), this.cookClockSec, this.cookRunning, this.plateTargetSec);
+    const sig = r.tasks.map((t) => `${t.start.toFixed(1)}:${t.finish.toFixed(1)}`).join("|");
+    if (sig !== this.lastScheduleSig) {
+      this.lastScheduleSig = sig;
+      this.scheduleRevision++;
+    }
+    return r;
+  }
+
+  public getSchedule(): ScheduledTask[] {
+    return this.getScheduleResult().tasks;
+  }
+
+  public getBaselineSchedule(): ScheduleResult {
+    return computeBaseline(this.scheduleInputs());
+  }
+
+  public getScheduleRevision(): number {
+    return this.scheduleRevision;
+  }
+
+  /** Current scheduled start (s on the cook clock). Dish 01: sauce 45, after +25 s 70. */
+  public getScheduledStart(taskId: string): number {
+    for (const t of this.getSchedule()) if (t.id === taskId) return t.start;
+    return -1;
+  }
+
+  public getBaselineStart(taskId: string): number {
+    for (const t of this.getBaselineSchedule().tasks) if (t.id === taskId) return t.start;
+    return -1;
+  }
+
+  public getMakespanSec(): number {
+    return this.getScheduleResult().makespan;
+  }
+
+  public getBaselineMakespanSec(): number {
+    return this.getBaselineSchedule().makespan;
+  }
+
+  public getPlateStartSec(): number {
+    return this.getScheduleResult().plateStart;
+  }
+
+  public getPlateBaselineSec(): number {
+    return this.getBaselineSchedule().plateStart;
+  }
+
+  /** Story clock of the plate: 400 s (06:40) at baseline plus the slip. */
+  public getPlateClockSec(): number {
+    return 400 + this.getPlateStartSec() - this.getPlateBaselineSec();
+  }
+
+  /** How long the pinned heat task must hold before plating (dish 01 after +25 s: 25). */
+  public getHoldSec(pinnedId: string = "skillet_sear_skin"): number {
+    const r = this.getScheduleResult();
+    let fin = 0;
+    for (const t of r.tasks) if (t.id === pinnedId) fin = t.finish;
+    return Math.max(0, r.plateStart - fin);
+  }
+
+  /** Actual starts for newly active tasks and the natural lateness of the running manual task (prep). */
+  private updateCookFacts(): void {
+    if (!this.cookRunning) return;
+    this.tasks.forEach((t) => {
+      if (t.state === "ACTIVE" && t.actualStartSec === undefined) t.actualStartSec = this.cookClockSec;
+      if (t.state === "COMPLETE" && t.actualStartSec !== undefined && t.actualFinishSec === undefined) t.actualFinishSec = this.cookClockSec;
+    });
+    const prep = this.tasks.get("prep_shallots");
+    if (prep && prep.state !== "COMPLETE" && prep.actualStartSec !== undefined) {
+      const late = this.cookClockSec - prep.actualStartSec - prep.plannedDurationSeconds - (prep.driftSec || 0);
+      if (late > 0) this.reportLateness(prep.id, late, "CLOCK");
+    }
+  }
+
   private onUpdate(): void {
+    if (this.cookRunning && !this.cookClockPaused && !this.hasConverged) {
+      this.cookClockSec += getDeltaTime() * this.timeMultiplier;
+      this.updateCookFacts();
+    }
     if (!this.isRunning || this.isHeld || this.hasConverged) {
       return;
     }
