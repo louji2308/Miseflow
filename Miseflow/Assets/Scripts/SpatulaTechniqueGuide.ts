@@ -1,7 +1,8 @@
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { makeEmissiveMaterial } from "./StationPropsBuilder";
-import { buildUnitQuadMesh, createWorldLabel, faceDirectorCamera, tint } from "./DAGCounterConduit";
+import { buildUnitQuadMesh, createWorldLabel, tint } from "./DAGCounterConduit";
+import { HeadPoseBillboard } from "./HeadPoseBillboard";
 import { FLIP_DURATION_SEC, SpatulaFlipRig } from "./SpatulaFlipRig";
 import { ProteinRegistry } from "./ProteinGenerators";
 
@@ -374,13 +375,13 @@ export class SpatulaTechniqueGuide extends BaseScriptComponent {
     const entry = createWorldLabel(this.root, "SpatulaCallout_Entry", "45 DEG ENTRY", 30, new vec4(GOLD[0], GOLD[1], GOLD[2], 1), 4.6, 0.9);
     const entryPos = w.uniformScale(4.4).add(u.uniformScale(-3.6)).add(new vec3(0, -0.6, 0));
     entry.root.getTransform().setLocalPosition(entryPos);
-    entry.root.getTransform().setLocalRotation(faceDirectorCamera(anchor.add(entryPos)));
+    HeadPoseBillboard.register(entry.root, { pitchDeg: 14 });
     this.entryLabel = entry.text;
 
     const roll = createWorldLabel(this.root, "SpatulaCallout_Roll", "GENTLE ROLL", 30, new vec4(ICE[0], ICE[1], ICE[2], 1), 4.4, 0.9);
     const rollPos = w.uniformScale(-2.2).add(u.uniformScale(-4.2)).add(new vec3(0, 4.4, 0));
     roll.root.getTransform().setLocalPosition(rollPos);
-    roll.root.getTransform().setLocalRotation(faceDirectorCamera(anchor.add(rollPos)));
+    HeadPoseBillboard.register(roll.root, { pitchDeg: 14 });
     this.rollLabel = roll.text;
 
     this.root.enabled = false;

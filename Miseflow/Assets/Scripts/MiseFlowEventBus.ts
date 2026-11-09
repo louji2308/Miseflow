@@ -61,6 +61,13 @@ export type MiseFlowEventType =
   | "STEP_STARTED"             // DishStepPayload
   | "STEP_COMPLETED"           // DishStepPayload
   | "KINEMATIC_COMPLETED"      // v5 K1b { kinematic, phase, durationSec } (noodle toss / dum / whisk finished)
+  // v7 S1 kitchen anchor root (KitchenAnchorRoot)
+  | "KITCHEN_ROOT_READY"       // KitchenRootReadyPayload (StationsRoot adopted under KitchenAnchorRoot, first frame)
+  | "KITCHEN_POSE_CHANGED"     // KitchenPoseChangedPayload (setPose / resetPose accepted)
+  | "KITCHEN_SLAB_MODE_CHANGED" // KitchenSlabModeChangedPayload
+  // v7 Stage 2 (reserved: names only, not emitted yet; Plan E3)
+  | "STATION_CLAIMED"
+  | "KITCHEN_RECALLED"
   // Legacy aliases for backward compatibility with SIK interactables
   | "STATION_STEP_COMPLETED"
   | "DAG_HOLD_TOGGLED"
@@ -218,6 +225,27 @@ export interface DishStepPayload {
   stepId: string;
   index: number;        // 0-based position in blueprint.steps
   total: number;
+}
+
+// -- v7 payloads --
+/** Kitchen slab visibility: SOLID (as authored), FAINT (cloned, dimmed material), HIDDEN (RMV disabled, object kept). */
+export type SlabMode = "SOLID" | "FAINT" | "HIDDEN";
+/** Who set the kitchen pose: the P0 default, a Stage 2 counter claim, a recalled anchor, or a LEAF scenario. */
+export type KitchenPoseSource = "DEFAULT" | "CLAIM" | "RECALL" | "LEAF";
+
+export interface KitchenRootReadyPayload {
+  rootName: string;     // "KitchenAnchorRoot"
+  adopted: string[];    // e.g. ["StationsRoot"]
+}
+
+export interface KitchenPoseChangedPayload {
+  position: vec3;       // KitchenAnchorRoot world position (counter plane origin)
+  rotation: quat;       // yaw-only world rotation
+  source: KitchenPoseSource;
+}
+
+export interface KitchenSlabModeChangedPayload {
+  mode: SlabMode;
 }
 
 type EventCallback = (data?: any) => void;

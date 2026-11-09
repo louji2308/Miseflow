@@ -1,6 +1,6 @@
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
 import { MeshAcc, SALMON_DOME_H, SALMON_SKIN_BULGE, makePbrMaterial, makeTexturedPbr } from "./StationPropsBuilder";
-import { faceDirectorCamera } from "./DAGCounterConduit";
+import { HeadPoseBillboard } from "./HeadPoseBillboard";
 import { ProteinProp, ProteinRegistry, proteinSearEase } from "./ProteinGenerators";
 
 const DEG = Math.PI / 180;
@@ -695,7 +695,6 @@ export class SpatulaFlipRig {
     this.fxT += dt;
     const T_STEAM = 1.3;
     const T_DROP = 0.55;
-    const camFace = faceDirectorCamera(this.station.getTransform().getLocalPosition());
     for (const s of this.steam) {
       const k = (this.fxT - s.ph) / T_STEAM;
       if (k >= 1) {
@@ -707,7 +706,7 @@ export class SpatulaFlipRig {
       tr.setLocalPosition(new vec3(this.C.x + s.dx * (1 + 0.25 * kk), this.C.y + 1.0 + kk * 5.0, this.C.z + s.dz));
       const sc = 2.2 + kk * 3.2;
       tr.setLocalScale(new vec3(sc, sc * 1.4, 1));
-      tr.setLocalRotation(camFace);
+      tr.setLocalRotation(HeadPoseBillboard.facing(s.obj)); // v7: live head pose (per-frame loop, not registered)
       s.mat.mainPass.baseColor = new vec4(1, 1, 1, Math.sin(Math.PI * kk) * 0.8);
     }
     for (const d of this.drops) {

@@ -26,11 +26,11 @@
 
 **STAGE 1 Anchor root and head pose** (gate: 24 pass + orbit capture showing labels following)
 - [COMPLETED] 1.1 (written 8 Nov by opus/high into `docs/v7/notes/stage1-audit.md`, 339 lines) Read-only audit: StationsRoot / CookStageRoot users, LEAF object-name lookups, `CAM_LOCAL` consumers [opus/high]
-- [NOT STARTED] 1.2 `KitchenAnchorRoot` controller (new): root pose, slab visibility, stable API for claims [opus/xhigh]
-- [NOT STARTED] 1.3 Re-parent legacy `StationsRoot` and Cook `CookStageRoot` under the root, keep object names and LEAF lookups alive [opus/xhigh]
-- [NOT STARTED] 1.4 Live head-pose billboarding in `MiseFlowSpatialUI` (replace `CAM_LOCAL`), rings stay flush, nothing parented to the camera [sonnet/high]
-- [NOT STARTED] 1.5 Update `station-setup-scenario` for the anchored hierarchy [sonnet/medium]
-- [NOT STARTED] 1.6 Gate: 24 pass one at a time, orbit screenshots, commit, push [ME]
+- [COMPLETED] 1.2 (9 Nov 04:25Z, opus/high; code compiled 0 errors, adoption log `adopted StationsRoot: world (0,-17.5,-76) err 0.0000`; LEAF verification is in 1.6; slab default SOLID in editor, HIDDEN on device, FAINT implemented but off until Stage 7; `KitchenAnchorRoot.ts` 472 lines, events KITCHEN_ROOT_READY / KITCHEN_POSE_CHANGED / KITCHEN_SLAB_MODE_CHANGED added, STATION_CLAIMED / KITCHEN_RECALLED reserved) `KitchenAnchorRoot` controller (new): root pose, slab visibility, stable API for claims [opus/xhigh]
+- [COMPLETED] 1.3 (9 Nov 04:25Z, same agent; StationsRoot adopted in the first UpdateEvent, `CookStage.enter` parents CookStageRoot under the kitchen root; runtime query confirmed parent/pose/scale; the Cook path was verified by code reading only, LEAF cook scenarios in 1.6) Re-parent legacy `StationsRoot` and Cook `CookStageRoot` under the root, keep object names and LEAF lookups alive [opus/xhigh]
+- [COMPLETED] 1.4 (9 Nov 04:30Z, sonnet/high; `HeadPoseBillboard.ts` creates its own root object, 14 objects registered, measured SkilletStationUI yaw 8.0 -> 32.4 deg when the preview camera moved 40 cm right; LEAF verification is in 1.6) Live head-pose billboarding in `MiseFlowSpatialUI` (replace `CAM_LOCAL`), rings stay flush, nothing parented to the camera [sonnet/high]
+- [COMPLETED] 1.5 (9 Nov 04:40Z: the new assertions ran and PASSED: parent KitchenAnchorRoot, world pose within 0.05 cm, scale 1, slab present, Camera Object children unchanged, billboard yaw > 5 deg on a simulated 40 cm head move) Update `station-setup-scenario` for the anchored hierarchy [sonnet/medium]
+- [COMPLETED] 1.6 (9 Nov 04:55Z: compile 0 errors, logs clean, 24/24 PASS in one pass one at a time, orbit captures `docs/v7/stage1-default.png` and `docs/v7/stage1-orbit-yaw40.png` show pills and step card turning to face the camera while rings stay flush, `docs/v7/stage1-runtime-view.jpg`, Scene.scene unchanged) Gate: 24 pass one at a time, orbit screenshots, commit, push [ME]
 
 **STAGE 2 Claim and memory** (gate: `claim-stations`, `kitchen-recall`)
 - [NOT STARTED] 2.1 Add v7 events to `MiseFlowEventBus` (STATION_CLAIMED, KITCHEN_RECALLED, HAND_AT_STATION, HAND_LEFT_STATION, STEP_DONE_PINCHED, TASK_LATE, PUCK_DISPLACED, HEAT_GUARD, ALERT_RAISED, ALERT_RESOLVED, REPLAN_REQUESTED, OPEN_DISH_STUDIO, PALETTE_REQUESTED) [opus/high]
@@ -111,7 +111,7 @@
 | Stage | LEAF scenarios run | Pass/fail | Tris / dynamic bodies | Screenshot | Commit |
 |---|---|---|---|---|---|
 | 0 | all 24 existing (baseline) | 24/24 PASS (`docs/v7/notes/stage0-leaf-baseline.md`) | v6 baseline: Chicken 65 world 7,024 tris (PROJECT_STATUS), 0 dynamic physics bodies | `docs/v7/stage0-baseline.png`, `docs/v7/stage0-runtime-view.jpg`, `docs/v7/recording-pose-empty-table.png` | `v7 stage 0:` commit (see git log) |
-| 1 | | | | | |
+| 1 | all 24 (station-setup with new anchor-root + billboard assertions) | 24/24 PASS | no new meshes (v6 tri counts unchanged), 0 dynamic bodies | `docs/v7/stage1-default.png`, `docs/v7/stage1-orbit-yaw40.png`, `docs/v7/stage1-runtime-view.jpg` | `v7 stage 1:` commit (see git log) |
 | 2 | | | | | |
 | 3 | | | | | |
 | 4 | | | | | |
@@ -125,6 +125,8 @@
 - Lens Studio `isAuthorized` is false on this machine (see D-003).
 - Every Lens Studio restart resets the preview to the empty Plane scene: re-apply `PreviewPanelTool setConfig` (Interactive, Sunlit Room, deviceCategory stereo) and `refresh` before testing or recording.
 - `VirtualScene apply` rewrites the tracked file `Miseflow/.virtual-scene.json`: run `git checkout -- Miseflow/.virtual-scene.json` before committing.
+- Stage 1: `StationsRoot` was the 4th scene root and is now under `KitchenAnchorRoot` (last root), so same-frame script order and transparent sort order may differ slightly; the default view looked identical in the captures. `KitchenAnchorRoot` adopts `StationsRoot` one frame after startup. On device the HIDDEN slab mode re-applies only when a Cook item is revealed (the bench may show one frame).
+- From Stage 1 on, the MCP `run_leaf_scenario` call times out on most scenarios; the scenarios still run to completion. Confirm with the log: `grep "Scenario <id> completed successfully"` in the current Lens Studio log file.
 - The Sunlit Room sideboard is not in the world mesh (only the coffee table is hit-testable), so the virtual counter plane fallback must exist.
 - Docs out of date until Stage 9: README/brief/submission say `claude-sonnet-5-5` and 21 scenarios; code uses `claude-opus-5-5` and 24 scenarios.
 

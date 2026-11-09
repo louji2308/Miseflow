@@ -34,6 +34,8 @@ import { NoodleLiftToss } from "./NoodleLiftToss";
 import { RiceDumLayer } from "./RiceDumLayer";
 import { WhiskEmulsion } from "./WhiskEmulsion";
 import { PantryChoreographer } from "./PantryChoreographer";
+import { KitchenAnchorRoot } from "./KitchenAnchorRoot";
+import { HeadPoseBillboard } from "./HeadPoseBillboard";
 
 // ============================================================================
 // MiseFlow v4 "Diegetic Cockpit" — progressive-disclosure spatial UI
@@ -65,10 +67,8 @@ const COLOR_SILVER = new vec4(0.78, 0.84, 0.92, 1.0);
 const COLOR_GLASS = new vec4(0.04, 0.06, 0.1, 1.0);
 const COLOR_AUTO_WHITE_GOLD = new vec4(1.0, 0.9, 0.62, 1.0); // WS9-P3 Auto Cook button (white-gold)
 
-// Camera pose that frames the counter, expressed in StationsRoot-local space
-// (world camera (0,25.1,-21.4) minus StationsRoot (0,-17.5,-76)). Used to make
-// every panel face the viewer.
-const CAM_LOCAL = new vec3(0, 42.6, 54.6);
+// v7 Stage 1B: panels face the live head pose via HeadPoseBillboard (yaw-only + fixed pitch);
+// the baked CAM_LOCAL constant is gone.
 
 // Pill geometry (cm)
 // v5 capsule labels: dark glass, hairline accent outline, icon left, white label + accent value
@@ -109,19 +109,6 @@ const COACH_HOLD_SEC = 9.0;
 const EXPAND_PULSE_SEC = 5.0;
 // How long a vision gate verdict holds the Skillet pill (seconds)
 const VISION_VERDICT_SEC = 6.0;
-
-function faceCamera(pos: vec3): quat {
-  const d = CAM_LOCAL.sub(pos);
-  const yaw = Math.atan2(d.x, d.z);
-  const horiz = Math.sqrt(d.x * d.x + d.z * d.z);
-  const pitch = -Math.atan2(d.y, horiz);
-  return quat.angleAxis(yaw, vec3.up()).multiply(quat.angleAxis(pitch, vec3.right()));
-}
-
-function yawToCamera(pos: vec3): quat {
-  const d = CAM_LOCAL.sub(pos);
-  return quat.angleAxis(Math.atan2(d.x, d.z), vec3.up());
-}
 
 function withAlpha(c: vec4, a: number): vec4 {
   return new vec4(c.r, c.g, c.b, a);
@@ -330,6 +317,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
    * (idempotent) so the layer never depends on an unsaved editor scene edit.
    */
   private ensureHeroComponents(root: SceneObject): void {
+    KitchenAnchorRoot.ensure(); // v7 S1: scene-root kitchen frame at P0; adopts StationsRoot on its first Update
     let layer = findByName(root, "DiegeticLayer");
     if (!layer) {
       layer = global.scene.createSceneObject("DiegeticLayer");
@@ -601,7 +589,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const root = global.scene.createSceneObject(name);
     root.setParent(parent);
     root.getTransform().setLocalPosition(anchor);
-    root.getTransform().setLocalRotation(faceCamera(anchor));
+    HeadPoseBillboard.register(root, { pitchDeg: 14 });
     root.createComponent("Component.Canvas");
 
     const h = PILL_H_COLLAPSED;
@@ -655,7 +643,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
         0.025,
         0.9
       );
-      s.obj.getTransform().setLocalRotation(yawToCamera(stemPos));
+      HeadPoseBillboard.register(s.obj, { pitchDeg: 0 }); // stems stay vertical: yaw only
       stem = s.style;
       stemObj = s.obj;
 
@@ -719,7 +707,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const root = global.scene.createSceneObject("PlateAnchorUI");
     root.setParent(parent);
     root.getTransform().setLocalPosition(center);
-    root.getTransform().setLocalRotation(faceCamera(center));
+    HeadPoseBillboard.register(root, { pitchDeg: 14 });
     root.createComponent("Component.Canvas");
 
     const w = 12.6;
@@ -774,7 +762,13 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const dock = global.scene.createSceneObject("DirectorPaletteUI");
     dock.setParent(parent);
     dock.getTransform().setLocalPosition(center);
-    dock.getTransform().setLocalRotation(faceCamera(center));
+    // Live head-pose billboard with a 6 deg deadband, frozen while any director button is hovered/pressed
+    // (moving colliders mid-press drops SIK events, see the onUpdate scale-pulse note).
+    HeadPoseBillboard.register(dock, {
+      pitchDeg: 14,
+      deadbandDeg: 6,
+      frozen: () => this.directorButtons.some((b) => b.hovered || b.pressed),
+    });
     dock.createComponent("Component.Canvas");
     // WS9-P3: third AUTO group -> slightly tighter spacing; v5 AI Dish joins AUTO -> 0.86; K1a Steps chip -> 0.80
     // keeps the dock the same width inside the Specs crop
@@ -916,7 +910,7 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     const root = global.scene.createSceneObject("ChefVoiceBannerUI");
     root.setParent(parent);
     root.getTransform().setLocalPosition(center);
-    root.getTransform().setLocalRotation(faceCamera(center));
+    HeadPoseBillboard.register(root, { pitchDeg: 14 });
     root.createComponent("Component.Canvas");
 
     const w = CHEF_BANNER_W;

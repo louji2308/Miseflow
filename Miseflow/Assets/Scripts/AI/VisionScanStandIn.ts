@@ -1,7 +1,8 @@
 import { ChoreographyDAG } from "../ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "../MiseFlowEventBus";
 import { makeEmissiveMaterial } from "../StationPropsBuilder";
-import { buildAnnulusMesh, buildUnitQuadMesh, createWorldLabel, faceDirectorCamera, tint } from "../DAGCounterConduit";
+import { buildAnnulusMesh, buildUnitQuadMesh, createWorldLabel, tint } from "../DAGCounterConduit";
+import { HeadPoseBillboard } from "../HeadPoseBillboard";
 import { AIProposal, GateEvaluation, ProposalGate } from "./ProposalGate";
 import { ScanScript, VisionConfig, VisionScanId as ConfigVisionScanId } from "./VisionConfig";
 
@@ -326,7 +327,7 @@ export class VisionScanStandIn extends BaseScriptComponent {
     const label = createWorldLabel(this.reticleRoot, "VisionScanReticle_Conf", "", 34, new vec4(VIOLET[0], VIOLET[1], VIOLET[2], 1), 5.0, 1.0);
     const lp = new vec3(6.6, 0.2, 3.4); // off the fillet's right end, over the pan rim (flip callouts own the left)
     label.root.getTransform().setLocalPosition(lp);
-    label.root.getTransform().setLocalRotation(faceDirectorCamera(anchor.add(lp)));
+    HeadPoseBillboard.register(label.root, { pitchDeg: 14 });
     this.confLabel = label.text;
 
     this.reticleRoot.enabled = false;

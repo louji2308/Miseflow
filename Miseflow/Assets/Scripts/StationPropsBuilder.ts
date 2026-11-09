@@ -1,5 +1,6 @@
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus } from "./MiseFlowEventBus";
+import { KitchenAnchorRoot } from "./KitchenAnchorRoot";
 import { DishAssetBuilders, IDishAssetBuilder, PantryContext, ProteinSpec, StagedDishItem, StarchTint } from "./AI/IDishAssetBuilder";
 import { getPreset } from "./AI/DishLibraryConfig";
 import { canonicalProteinNumber, getCatalogEntry, PROTEIN_REGISTRY } from "./AI/AssetPageTable";
@@ -578,7 +579,9 @@ function buildRoundedSlab(acc: MeshAcc, hx: number, hz: number, top: number, bot
   for (let i = 0; i < N; i++) bot.push(acc.v(per[i].x, bottom, per[i].z, 0, -1, 0, 0.5, 0.5));
   for (let i = 0; i < N; i++) acc.tri(cb, bot[i], bot[(i + 1) % N]);
 }
-// ─── v4 Z-zoned layout (StationsRoot-local cm; root sits at (0,-17.5,-76)) ───
+// ─── v4 Z-zoned layout (StationsRoot-local cm) ───
+// v7 S1: StationsRoot sits at local (0,0.23,0) under KitchenAnchorRoot (P0 world (0,-17.73,-76)), so its world
+// pose stays (0,-17.5,-76) and the slab top (y = -0.23 here) is the kitchen counter plane y = 0.
 // Counter slab top is at y = -0.23. Rear row: saucier on the simmer burner.
 // Middle row: skillet (left) + butcher block (right). Front-centre: plate.
 // Compact enough (x -19..18) to fit the narrow Spectacles display crop.
@@ -1262,7 +1265,8 @@ export class StationPropsBuilder extends BaseScriptComponent {
 
   private upgradeAllStations(): void {
     const root = this.getSceneObject();
-    root.getTransform().setLocalPosition(new vec3(0, -17.5, -76.0));
+    // v7 S1: local (0,0.23,0) under KitchenAnchorRoot, else the legacy (0,-17.5,-76) (adoption runs one frame later)
+    KitchenAnchorRoot.placeStationsRoot(root);
 
     // 0. Build cohesive dark-slate kitchen countertop surface beneath the 3 stations
     this.buildKitchenCountertop(root);

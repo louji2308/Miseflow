@@ -19,6 +19,7 @@
  * (disposes). It never touches StationsRoot: DishStudio owns hiding / restoring the legacy setup.
  */
 import { MiseFlowEventBus, MiseFlowEventType } from "../MiseFlowEventBus";
+import { KitchenAnchorRoot } from "../KitchenAnchorRoot";
 import { MeshAcc, SteamPlume } from "../StationPropsBuilder";
 import { buildHandi, buildLadleMesh, buildWok, HANDI_INNER } from "../VesselGenerators";
 import { buildStockpot, buildTawa, STOCK_INNER } from "../ToolGenerators";
@@ -960,9 +961,11 @@ export function buildCookWorld(plan: CookPlan, parent: SceneObject, opts: CookSt
 // ───────────────────────────── component ─────────────────────────────
 
 /**
- * Listens to CookEvents.PLAN_READY {plan} and builds the world under a scene-root "CookStageRoot" placed where the
- * legacy StationsRoot sits (so the director camera pose frames it). CookEvents.EXIT / RESET_REQUESTED dispose it.
- * It does NOT hide or restore the legacy setup (DishStudio owns that).
+ * Listens to CookEvents.PLAN_READY {plan} and builds the world under "CookStageRoot", placed where the legacy
+ * StationsRoot sits (so the director camera pose frames it). v7 S1: CookStageRoot is a child of KitchenAnchorRoot
+ * (beside StationsRoot, never inside it) with StationsRoot's local pose, so the bench follows the kitchen pose;
+ * without a kitchen root it falls back to a scene-root object copying the StationsRoot world pose.
+ * CookEvents.EXIT / RESET_REQUESTED dispose it. It does NOT hide or restore the legacy setup (DishStudio owns that).
  */
 @component
 export class CookStage extends BaseScriptComponent {
@@ -1010,12 +1013,19 @@ export class CookStage extends BaseScriptComponent {
   public enter(plan: CookPlan): Promise<CookWorld> {
     this.disposeWorld();
     const token = ++this.token;
-    const root = global.scene.createSceneObject("CookStageRoot"); // scene root: never inside the hidden StationsRoot
-    const anchor = findSceneObject("StationsRoot");
-    if (anchor) {
-      root.getTransform().setWorldPosition(anchor.getTransform().getWorldPosition());
-      root.getTransform().setWorldRotation(anchor.getTransform().getWorldRotation());
-    } else root.getTransform().setWorldPosition(new vec3(0, -17.5, -76));
+    // Never inside the (scale-hidden) StationsRoot. v7 S1: child of KitchenAnchorRoot with StationsRoot's local pose
+    // ((0,0.23,0), identity), so the bench top stays flush with kitchen y = 0 and follows setPose.
+    const root = global.scene.createSceneObject("CookStageRoot");
+    const kitchen = KitchenAnchorRoot.getInstance();
+    if (kitchen) kitchen.adoptCookStage(root);
+    else {
+      // legacy fallback: scene root, copy the StationsRoot world pose once
+      const anchor = findSceneObject("StationsRoot");
+      if (anchor) {
+        root.getTransform().setWorldPosition(anchor.getTransform().getWorldPosition());
+        root.getTransform().setWorldRotation(anchor.getTransform().getWorldRotation());
+      } else root.getTransform().setWorldPosition(new vec3(0, -17.5, -76));
+    }
     this.stageRoot = root;
     const p = buildCookWorld(plan, root, {
       canReveal: () => !this.studioOpen,

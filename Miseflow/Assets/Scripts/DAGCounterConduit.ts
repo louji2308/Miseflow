@@ -1,6 +1,7 @@
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { makeEmissiveMaterial } from "./StationPropsBuilder";
+import { HeadPoseBillboard } from "./HeadPoseBillboard";
 import { RoundedRectangle } from "SpectaclesUIKit.lspkg/Scripts/Visuals/RoundedRectangle/RoundedRectangle";
 
 // ─── StationsRoot-local layout (mirrors StationPropsBuilder.ts constants) ───
@@ -107,16 +108,38 @@ export function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-/** Director-camera pose in StationsRoot-local space (mirrors MiseFlowSpatialUI CAM_LOCAL). */
-export const DIRECTOR_CAM_LOCAL = new vec3(0, 42.6, 54.6);
+let cachedStationsRoot: SceneObject | null = null;
 
-/** Rotation that turns a Canvas/Text (+Z normal) toward the director camera. */
+function findStationsRootForBillboard(): SceneObject | null {
+  if (cachedStationsRoot && !isNull(cachedStationsRoot)) return cachedStationsRoot;
+  cachedStationsRoot = null;
+  const walk = (o: SceneObject): SceneObject | null => {
+    if (o.name === "StationsRoot") return o;
+    const n = o.getChildrenCount();
+    for (let i = 0; i < n; i++) {
+      const r = walk(o.getChild(i));
+      if (r) return r;
+    }
+    return null;
+  };
+  const n = global.scene.getRootObjectsCount();
+  for (let i = 0; i < n; i++) {
+    const r = walk(global.scene.getRootObject(i));
+    if (r) {
+      cachedStationsRoot = r;
+      return r;
+    }
+  }
+  return null;
+}
+
+/**
+ * @deprecated v7: kept for compatibility. Thin wrapper over HeadPoseBillboard: rotation (yaw + fixed 14 deg
+ * pitch) that turns a Canvas/Text (+Z normal) at StationsRoot-local `pos` toward the live head pose.
+ * Prefer HeadPoseBillboard.register(obj) (continuous) or HeadPoseBillboard.facing(obj) (one-shot).
+ */
 export function faceDirectorCamera(pos: vec3): quat {
-  const d = DIRECTOR_CAM_LOCAL.sub(pos);
-  const yaw = Math.atan2(d.x, d.z);
-  const horiz = Math.sqrt(d.x * d.x + d.z * d.z);
-  const pitch = -Math.atan2(d.y, horiz);
-  return quat.angleAxis(yaw, vec3.up()).multiply(quat.angleAxis(pitch, vec3.right()));
+  return HeadPoseBillboard.facingLocal(findStationsRootForBillboard(), pos, 14);
 }
 
 /**
@@ -439,7 +462,7 @@ export class DAGCounterConduit extends BaseScriptComponent {
       root.setParent(parent);
       root.createComponent("Component.Canvas");
       root.getTransform().setLocalPosition(pos);
-      root.getTransform().setLocalRotation(faceDirectorCamera(pos));
+      HeadPoseBillboard.register(root, { pitchDeg: 14 });
       const orange = new vec4(LOCK_RED[0], LOCK_RED[1], LOCK_RED[2], 1.0);
 
       const leaderLen = pos.y - 1.32; // down to the board top

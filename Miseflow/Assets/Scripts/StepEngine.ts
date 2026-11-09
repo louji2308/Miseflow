@@ -2,6 +2,7 @@ import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MetricPrepBlueprint } from "./MetricPrepBlueprint";
 import { StationPropsBuilder } from "./StationPropsBuilder";
+import { HeadPoseBillboard } from "./HeadPoseBillboard";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
 import { PlatingFinisher } from "./PlatingFinisher";
 import { AutoCookController } from "./AutoCookController";
@@ -50,21 +51,12 @@ const MAX_DOTS = 9;
 // Card geometry (cm, StationsRoot-local; same frame and camera as the station pills)
 const CARD_W = 9.2;
 const CARD_H = 4.3;
-const CAM_LOCAL = new vec3(0, 42.6, 54.6);
 const ANCHOR: { [s: string]: vec3 } = {
   PREP: new vec3(12.4, 12.6, -6.5), // above the prep pill
   SKILLET: new vec3(-11.6, 11.8, -4.0), // above the skillet pill
   SAUCEPOT: new vec3(-10.6, 12.2, -12.0), // left of the sauce pill, below the dish banner
   PLATING: new vec3(10.6, 12.2, -12.0), // right of the sauce pill
 };
-
-function faceCamera(pos: vec3): quat {
-  const d = CAM_LOCAL.sub(pos);
-  const yaw = Math.atan2(d.x, d.z);
-  const horiz = Math.sqrt(d.x * d.x + d.z * d.z);
-  const pitch = -Math.atan2(d.y, horiz);
-  return quat.angleAxis(yaw, vec3.up()).multiply(quat.angleAxis(pitch, vec3.right()));
-}
 
 function accentOf(station: string): vec4 {
   if (station === "SKILLET") return KIT.AMBER;
@@ -443,6 +435,7 @@ export class StepEngine extends BaseScriptComponent {
     const root = global.scene.createSceneObject("StepCard");
     root.setParent(parent);
     root.createComponent("Component.Canvas");
+    HeadPoseBillboard.register(root, { pitchDeg: 14 }); // v7: live head-pose billboard (re-snaps whenever it is re-enabled)
     this.card = root;
     this.cardGlass = kitCard(root, "StepCard_Glass", new vec3(0, 0, -0.1), new vec2(CARD_W, CARD_H), KIT.EMERALD, this.glasses);
     const inner = CARD_W - 0.9;
@@ -514,8 +507,7 @@ export class StepEngine extends BaseScriptComponent {
     }
     const pos = ANCHOR[s.station] || ANCHOR.PREP;
     const tr = this.card.getTransform();
-    tr.setLocalPosition(pos);
-    tr.setLocalRotation(faceCamera(pos));
+    tr.setLocalPosition(pos); // rotation is owned by HeadPoseBillboard (registered once in buildCard)
     this.warmup = Math.max(this.warmup, 3);
   }
 
