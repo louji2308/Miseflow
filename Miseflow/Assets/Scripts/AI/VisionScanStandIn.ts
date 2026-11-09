@@ -1,3 +1,11 @@
+/**
+ * VisionScanStandIn.ts
+ * v7 role (Plan S2, decision D-012 e): the claim recognizer stand-in. In v7 the "recognition" moment is the cook
+ * claiming real spots (ClaimController: four pinches on the counter); this component remains the honest, scripted
+ * stand-in for camera recognition and, on device, the place where a camera-grounded suggestion may later be offered
+ * to the claim flow. Every suggestion still goes through the unchanged ProposalGate with the 0.55 confidence floor.
+ * No behaviour change in v7 Stage 2.
+ */
 import { ChoreographyDAG } from "../ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "../MiseFlowEventBus";
 import { makeEmissiveMaterial } from "../StationPropsBuilder";

@@ -35,6 +35,8 @@ import { RiceDumLayer } from "./RiceDumLayer";
 import { WhiskEmulsion } from "./WhiskEmulsion";
 import { PantryChoreographer } from "./PantryChoreographer";
 import { KitchenAnchorRoot } from "./KitchenAnchorRoot";
+import { ClaimController } from "./ClaimController";
+import { KitchenPersistence } from "./KitchenPersistence";
 import { HeadPoseBillboard } from "./HeadPoseBillboard";
 
 // ============================================================================
@@ -318,6 +320,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
    */
   private ensureHeroComponents(root: SceneObject): void {
     KitchenAnchorRoot.ensure(); // v7 S1: scene-root kitchen frame at P0; adopts StationsRoot on its first Update
+    ClaimController.ensure(); // v7 S2: claim flow (idle until begin(): key C in the editor, auto on device)
+    KitchenPersistence.ensure(); // v7 S2: kitchen memory (empty store = no change)
     let layer = findByName(root, "DiegeticLayer");
     if (!layer) {
       layer = global.scene.createSceneObject("DiegeticLayer");

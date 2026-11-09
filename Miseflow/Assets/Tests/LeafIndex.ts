@@ -21,6 +21,8 @@ import { LiveAiCompileScenario } from "./LiveAiCompileScenario";
 import { CookPlanDishScenario } from "./CookPlanDishScenario";
 import { ShapeGalleryScenario } from "./ShapeGalleryScenario";
 import { AssetGalleryScenario } from "./AssetGalleryScenario";
+import { ClaimStationsScenario } from "./ClaimStationsScenario";
+import { KitchenRecallScenario } from "./KitchenRecallScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -132,6 +134,14 @@ export class LeafIndex extends BaseScriptComponent {
       id: "asset-gallery",
       typename: AssetGalleryScenario.getTypeName(),
       parameters: { hold: "0" },
+    },
+    {
+      id: "claim-stations-scenario",
+      typename: ClaimStationsScenario.getTypeName(),
+    },
+    {
+      id: "kitchen-recall-scenario",
+      typename: KitchenRecallScenario.getTypeName(),
     },
   ];
 

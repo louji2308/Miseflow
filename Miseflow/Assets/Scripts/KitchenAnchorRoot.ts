@@ -115,6 +115,8 @@ export class KitchenAnchorRoot extends BaseScriptComponent {
   /** Legacy layout reference points in the kitchen frame (StationPropsBuilder SKILLET_POS / PLATE_POS, y = 0). */
   static readonly LEGACY_LEFT_BURNER_K = new vec3(-11.2, 0, -1.5);
   static readonly LEGACY_PLATE_K = new vec3(0, 0, 4.5);
+  /** Stage 2: setContentHidden(true) parks the root this far from its pose (out of view, scale untouched). */
+  static readonly PARK_OFFSET = new vec3(0, -10000, 0);
 
   private static instance: KitchenAnchorRoot | null = null;
 
@@ -139,6 +141,8 @@ export class KitchenAnchorRoot extends BaseScriptComponent {
   private poseSource: KitchenPoseSource = "DEFAULT";
   private slabMode: SlabMode = isEditorRuntime() ? "SOLID" : "HIDDEN";
   private slabEntries: SlabEntry[] = [];
+  private contentHidden: boolean = false;
+  private parkedPose: { position: vec3; rotation: quat } | null = null;
 
   // ───────────────────────── static API ─────────────────────────
 
@@ -317,11 +321,87 @@ export class KitchenAnchorRoot extends BaseScriptComponent {
     }
     const yawRot = quat.angleAxis(yawOf(rotation), vec3.up());
     const t = this.getSceneObject().getTransform();
-    t.setWorldPosition(position);
+    if (this.contentHidden) {
+      // Stage 2: while parked, the new pose is the one restored by setContentHidden(false).
+      this.parkedPose = { position: new vec3(position.x, position.y, position.z), rotation: yawRot };
+      t.setWorldPosition(position.add(KitchenAnchorRoot.PARK_OFFSET));
+    } else {
+      t.setWorldPosition(position);
+    }
     t.setWorldRotation(yawRot);
     t.setLocalScale(vec3.one());
     this.poseSource = source;
-    this.bus.emit("KITCHEN_POSE_CHANGED", { position: t.getWorldPosition(), rotation: t.getWorldRotation(), source });
+    const p = this.contentHidden && this.parkedPose ? this.parkedPose.position : t.getWorldPosition();
+    this.bus.emit("KITCHEN_POSE_CHANGED", { position: p, rotation: t.getWorldRotation(), source });
+    return true;
+  }
+
+  /**
+   * Stage 2 (Plan S1 frame, D-012): pose from the claimed spots. Local +X runs from the left burner toward the
+   * plate (ground-projected), the origin is the centroid of all claimed points on the surface, y = mean surface
+   * height. Unlike setPoseFromCounter this does not map the legacy layout points; the legacy dish-01 miniature
+   * keeps its relative layout around the kitchen origin (D-012 d).
+   */
+  public setPoseFromClaims(points: vec3[], leftBurnerW: vec3, plateW: vec3, normalW: vec3, source: KitchenPoseSource = "CLAIM"): boolean {
+    if (!points || points.length === 0) return false;
+    const n = normalW.normalize();
+    const tilt = Math.acos(Math.max(-1, Math.min(1, n.y))) * RAD2DEG;
+    if (tilt > this.maxTiltDeg) {
+      print(`[KitchenAnchorRoot] setPoseFromClaims(${source}) refused: normal tilt ${tilt.toFixed(1)} deg`);
+      return false;
+    }
+    const d = plateW.sub(leftBurnerW);
+    if (d.x * d.x + d.z * d.z < 1) {
+      print(`[KitchenAnchorRoot] setPoseFromClaims(${source}) refused: burner and plate closer than 1 cm`);
+      return false;
+    }
+    // quat.angleAxis(yaw, up) maps +X to (cos yaw, 0, -sin yaw).
+    const yaw = Math.atan2(-d.z, d.x);
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (const p of points) {
+      cx += p.x;
+      cy += p.y;
+      cz += p.z;
+    }
+    const k = 1 / points.length;
+    return this.setPose(new vec3(cx * k, cy * k, cz * k), quat.angleAxis(yaw, vec3.up()), source);
+  }
+
+  /** True while setContentHidden(true) has parked the kitchen (claiming). */
+  public isContentHidden(): boolean {
+    return this.contentHidden;
+  }
+
+  /**
+   * Stage 2: hides / shows everything under KitchenAnchorRoot WITHOUT touching StationsRoot's local scale (DishStudio
+   * owns it) and without disabling any object (scripts, DAG timers and state keep running). Hiding parks the root
+   * PARK_OFFSET (100 m) below its pose, out of every view; world scale stays 1. Showing restores the pose (or the
+   * pose given to setPose while parked). Refused while the pose is locked (Cook stage / Auto Cook), like setPose.
+   */
+  public setContentHidden(hidden: boolean): boolean {
+    if (hidden === this.contentHidden) return true;
+    const t = this.getSceneObject().getTransform();
+    if (hidden) {
+      if (this.isPoseLocked()) {
+        print(`[KitchenAnchorRoot] setContentHidden(true) refused: ${alive(this.cookRoot) ? "Cook stage active" : "Auto Cook running"}`);
+        return false;
+      }
+      this.parkedPose = { position: t.getWorldPosition(), rotation: t.getWorldRotation() };
+      t.setWorldPosition(this.parkedPose.position.add(KitchenAnchorRoot.PARK_OFFSET));
+      this.contentHidden = true;
+    } else {
+      const p = this.parkedPose;
+      this.contentHidden = false;
+      this.parkedPose = null;
+      if (p) {
+        t.setWorldPosition(p.position);
+        t.setWorldRotation(p.rotation);
+      }
+    }
+    print(`[KitchenAnchorRoot] content ${hidden ? "hidden (parked)" : "shown"} at ${fmt(this.getPose().position)}`);
+    this.bus.emit("KITCHEN_CONTENT_HIDDEN", { hidden });
     return true;
   }
 

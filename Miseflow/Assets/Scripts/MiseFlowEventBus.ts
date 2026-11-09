@@ -65,9 +65,26 @@ export type MiseFlowEventType =
   | "KITCHEN_ROOT_READY"       // KitchenRootReadyPayload (StationsRoot adopted under KitchenAnchorRoot, first frame)
   | "KITCHEN_POSE_CHANGED"     // KitchenPoseChangedPayload (setPose / resetPose accepted)
   | "KITCHEN_SLAB_MODE_CHANGED" // KitchenSlabModeChangedPayload
-  // v7 Stage 2 (reserved: names only, not emitted yet; Plan E3)
-  | "STATION_CLAIMED"
-  | "KITCHEN_RECALLED"
+  // v7 Stage 2 claim and memory (ClaimController / KitchenPersistence / KitchenAnchorRoot)
+  | "STATION_CLAIMED"          // StationClaimedPayload (one spot accepted)
+  | "STATION_UNCLAIMED"        // StationUnclaimedPayload (undo of the last spot)
+  | "KITCHEN_CLAIMED"          // KitchenClaimedPayload (4th spot accepted: kitchen posed, Station_* built)
+  | "CLAIM_STATE_CHANGED"      // ClaimStateChangedPayload (begin / cancel / next role / complete)
+  | "KITCHEN_RECALLED"         // KitchenRecalledPayload (remembered kitchen applied at boot, no claim UI)
+  | "KITCHEN_FORGOTTEN"        // KitchenForgottenPayload (store / anchor area cleared)
+  | "KITCHEN_CONTENT_HIDDEN"   // KitchenContentHiddenPayload (KitchenAnchorRoot.setContentHidden)
+  // v7 Plan E3 (reserved: names only, not emitted yet)
+  | "HAND_AT_STATION"
+  | "HAND_LEFT_STATION"
+  | "STEP_DONE_PINCHED"
+  | "TASK_LATE"
+  | "PUCK_DISPLACED"
+  | "HEAT_GUARD"
+  | "ALERT_RAISED"
+  | "ALERT_RESOLVED"
+  | "REPLAN_REQUESTED"
+  | "OPEN_DISH_STUDIO"
+  | "PALETTE_REQUESTED"
   // Legacy aliases for backward compatibility with SIK interactables
   | "STATION_STEP_COMPLETED"
   | "DAG_HOLD_TOGGLED"
@@ -246,6 +263,72 @@ export interface KitchenPoseChangedPayload {
 
 export interface KitchenSlabModeChangedPayload {
   mode: SlabMode;
+}
+
+// -- v7 Stage 2 payloads (claim and memory) --
+/** Claimable spots, in claim order. WARM is a fifth spot offered only on demand (ClaimController.requestWarmSpot). */
+export type StationRole = "BURNER_L" | "BURNER_R" | "BOARD" | "PLATE" | "WARM";
+/** How the claim surface was found: the world mesh, or the Lens-provided virtual counter plane. */
+export type ClaimSurfaceMode = "MESH" | "PLANE";
+
+export interface StationClaimedPayload {
+  role: StationRole;
+  position: vec3;       // world position on the surface (cm)
+  normal: vec3;         // world surface normal (unit)
+  index: number;        // 0-based claim index
+  total: number;        // spots needed for this claim pass (4, or 5 with a warm spot)
+  surface: ClaimSurfaceMode;
+}
+
+export interface StationUnclaimedPayload {
+  role: StationRole;
+  remaining: number;    // spots still claimed after the undo
+}
+
+export interface ClaimedStationInfo {
+  role: StationRole;
+  name: string;         // Station_BurnerL / Station_BurnerR / Station_Board / Station_Plate / Station_Warm
+  position: vec3;       // world
+  localPosition: vec3;  // KitchenAnchorRoot local
+  normal: vec3;         // world
+}
+
+export interface KitchenClaimedPayload {
+  stations: ClaimedStationInfo[];
+  rootPosition: vec3;   // KitchenAnchorRoot world position (surface height)
+  rootRotation: quat;   // yaw-only; local +X runs from the left burner toward the plate
+  surface: ClaimSurfaceMode;
+  warmOnly?: boolean;   // true for a requestWarmSpot() pass (kitchen pose unchanged, Station_Warm only)
+}
+
+export interface ClaimStateChangedPayload {
+  claiming: boolean;
+  nextRole: StationRole | null;
+  claimed: number;
+  total: number;
+  reason: "BEGIN" | "CLAIM" | "UNDO" | "CANCEL" | "COMPLETE" | "WARM";
+}
+
+/** One remembered pose (world). role "KITCHEN" is the KitchenAnchorRoot pose itself. */
+export interface StationPose {
+  role: StationRole | "KITCHEN";
+  position: vec3;
+  rotation: quat;
+  transform: mat4;
+  anchorId?: string;    // device only (Spatial Anchors)
+}
+
+export interface KitchenRecalledPayload {
+  stations: StationPose[];
+  source: "STORAGE" | "ANCHORS";
+}
+
+export interface KitchenForgottenPayload {
+  source: "STORAGE" | "ANCHORS";
+}
+
+export interface KitchenContentHiddenPayload {
+  hidden: boolean;
 }
 
 type EventCallback = (data?: any) => void;
