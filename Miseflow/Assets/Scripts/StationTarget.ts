@@ -9,6 +9,7 @@ import {
 } from "./MiseFlowEventBus";
 import { KIT, KitGlass, applyKitGlass, findSceneCamera, kitGlass, kitText, scaleRgb, withAlpha } from "./StudioCardKit";
 import { HeadPoseBillboard } from "./HeadPoseBillboard";
+import { HandZoneSensor } from "./HandZoneSensor";
 import { KitchenAnchorRoot } from "./KitchenAnchorRoot";
 import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MetricPrepBlueprint } from "./MetricPrepBlueprint";
@@ -195,6 +196,8 @@ export class StationTarget {
   /** Done circle pinched while OPEN / ALERT and enabled. */
   /** Returns true when the step is repeatable (CHOP / PORTION): the card then stays open instead of closing after 0.8 s. */
   public onDone: ((src: PressSource) => boolean | void) | null = null;
+  /** Any pinch on the circle means "I am here" (Stage 4 hand-zone fallback; the hub wires it to the sensor). */
+  public onPinchHere: (() => void) | null = null;
   /** Plate only: "Name a dish". */
   public onSecondary: ((src: PressSource) => void) | null = null;
   /** Plate only: the circle was held 1.5 s. */
@@ -453,6 +456,7 @@ export class StationTarget {
       this.holdFired = false;
       return;
     }
+    if (this.onPinchHere) this.onPinchHere();
     if (!this.wantOpen && !this.alertOn) {
       this.trigger("PINCH");
       return;
@@ -673,6 +677,7 @@ export class StationTargetHub extends BaseScriptComponent {
   private cookMode: boolean = false;
   private studioOpen: boolean = false;
   private clock: number = 0;
+  private lastReal: number = -1;
   private started: boolean = false;
   private frames: number = 0;
 
@@ -685,6 +690,7 @@ export class StationTargetHub extends BaseScriptComponent {
   private lastSec: { [id: string]: number } = {};
   private converged: boolean = false;
   private alertWanted: { [id: string]: string } = {};
+  private legacyAlertIds: { [id: string]: boolean } = {};
   private alertOrder: string[] = [];
   private alertOwner: string | null = null;
   private cookRuns: { [stepId: string]: CookRun } = {};
@@ -786,10 +792,18 @@ export class StationTargetHub extends BaseScriptComponent {
     this.listen("HAND_AT_STATION", (d?: HandStationPayload) => this.onHandAt(d, true));
     this.listen("HAND_LEFT_STATION", (d?: HandStationPayload) => this.onHandAt(d, false));
     this.listen("ALERT_RAISED", (d?: AlertRaisedPayload) => {
-      if (d && d.stationId) this.requestAlert(String(d.stationId), String(d.kind || "ALERT"));
+      if (d && d.stationId) {
+        delete this.legacyAlertIds[String(d.stationId)]; // the director owns this alert now
+        this.requestAlert(String(d.stationId), String(d.kind || "ALERT"));
+      }
     });
     this.listen("ALERT_RESOLVED", (d?: AlertResolvedPayload) => {
       if (d && d.stationId) this.resolveAlert(String(d.stationId));
+    });
+    // Stage 4: in Cook mode the hand-zone sensor measures to the Cook vessel / board / plate targets
+    HandZoneSensor.setStationProvider(() => {
+      if (!this.cookMode || this.cook.length === 0) return null;
+      return this.cook.map((t) => ({ id: t.id, pos: t.root.getTransform().getWorldPosition() }));
     });
     print(`[StationTargetHub] ${this.legacy.length} legacy station targets built`);
   }
@@ -885,6 +899,7 @@ export class StationTargetHub extends BaseScriptComponent {
   }
 
   private wireTarget(t: StationTarget): void {
+    t.onPinchHere = () => HandZoneSensor.notifyPinchHere(t.id);
     t.onDone = (src) => (t.engine === "LEGACY" ? this.doneLegacy(t, src) : this.doneCook(t, src));
     if (t.isPlate) {
       t.onSecondary = (src) => {
@@ -1028,8 +1043,14 @@ export class StationTargetHub extends BaseScriptComponent {
         const prevKey = this.lastKey[id];
         if (prevKey !== undefined && prevKey !== v.key && v.expanded) t.trigger(`STATE_${v.key.toUpperCase()}`);
         this.lastKey[id] = v.key;
-        if (v.alert) this.requestAlert(id, v.key === "drift" ? "DRIFT" : "HEAT_GUARD");
-        else if (this.alertWanted[id] === "DRIFT" || this.alertWanted[id] === "HEAT_GUARD") this.resolveAlert(id);
+        // the pill-derived alert is the hub's own; an alert the attention director raised (ALERT_RAISED) is not auto-resolved here
+        if (v.alert) {
+          if (this.alertWanted[id] === undefined) this.legacyAlertIds[id] = true;
+          this.requestAlert(id, v.key === "drift" ? "DRIFT" : "HEAT_GUARD");
+        } else if (this.legacyAlertIds[id] && (this.alertWanted[id] === "DRIFT" || this.alertWanted[id] === "HEAT_GUARD")) {
+          delete this.legacyAlertIds[id];
+          this.resolveAlert(id);
+        }
       }
       // 10 s before a DAG timer ends
       if (this.dag && (id === "SKILLET" || id === "SAUCEPOT")) {
@@ -1306,6 +1327,7 @@ export class StationTargetHub extends BaseScriptComponent {
     this.lastKey = {};
     this.lastSec = {};
     this.alertWanted = {};
+    this.legacyAlertIds = {};
     this.alertOrder = [];
     this.alertOwner = null;
     this.cookMode = false;
@@ -1387,7 +1409,10 @@ export class StationTargetHub extends BaseScriptComponent {
   private onUpdate(): void {
     if (!this.started) return;
     const dt = Math.min(0.1, getDeltaTime());
-    this.clock += dt;
+    // the clock (5 s close rule, pulses) follows real time even when the editor preview runs at a low frame rate
+    const realNow = getTime();
+    this.clock += this.lastReal < 0 ? dt : Math.max(dt, Math.min(1.0, realNow - this.lastReal));
+    this.lastReal = realNow;
     this.frames++;
     this.maintainVault();
     this.resolveRefs();
@@ -1403,6 +1428,9 @@ export class StationTargetHub extends BaseScriptComponent {
     if (showLegacy) this.refreshLegacy();
     if (showCook) this.refreshCook();
     this.arbitrateAlerts();
+    // Stage 4: a hand that stays at a station keeps its card open (the 5 s close timer starts when the hand leaves)
+    const sensor = HandZoneSensor.getInstance();
+    if (sensor) for (const t of this.getTargets()) if (t.isShown() && sensor.isHandAt(t.id)) t.trigger("HAND_AT_STATION");
     if (showLegacy || showCook) this.updateGaze(dt);
     for (const t of this.legacy) if (t.isShown()) t.update(dt, this.clock);
     for (const t of this.cook) if (t.isShown()) t.update(dt, this.clock);

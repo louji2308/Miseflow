@@ -2,6 +2,7 @@ import { ChoreographyDAG } from "./ChoreographyDAG";
 import { MiseFlowEventBus, MiseFlowEventType } from "./MiseFlowEventBus";
 import { makeEmissiveMaterial } from "./StationPropsBuilder";
 import { createWorldLabel, tint } from "./DAGCounterConduit";
+import { HandZoneSensor } from "./HandZoneSensor";
 
 const DEG = Math.PI / 180;
 const CORAL: [number, number, number] = [1.0, 0.36, 0.22];
@@ -97,6 +98,9 @@ interface Beacon {
  * pulsing chevron + label appears at the matching edge of view (EdgeBeacon_Left/Right).
  * It fades once the station is back within 15 deg (hysteresis avoids flicker).
  * Test hook: setSimulatedCameraYaw(deg) overrides the camera yaw used for the angle test.
+ * v7 Stage 4: the AttentionDirector drives it too. While the director has an alert (ALERT_RAISED / ALERT_RESOLVED on the
+ * bus) the arrow points at THAT station (HandZoneSensor.getStationWorldPos) with the same 20 / 15 deg hysteresis; the
+ * original skillet-critical path (flip window, prep-drift heat alert) is kept as is and wins the label.
  */
 @component
 export class GazeEdgeBeacon extends BaseScriptComponent {
@@ -125,6 +129,7 @@ export class GazeEdgeBeacon extends BaseScriptComponent {
   private driftAlert: boolean = false;
   private simulatedYawDeg: number = NaN;
   private labelText: string = "";
+  private directorAlert: { stationId: string; kind: string } | null = null;
 
   private eventBus: MiseFlowEventBus = MiseFlowEventBus.getInstance();
   private handlers: { ev: MiseFlowEventType; cb: (d?: any) => void }[] = [];
@@ -172,8 +177,25 @@ export class GazeEdgeBeacon extends BaseScriptComponent {
     return this.criticalReason() !== "";
   }
 
+  /** True when the arrow is wanted for any reason (skillet critical path or a director alert). */
+  public isAttentionActive(): boolean {
+    return this.criticalReason() !== "" || this.directorAlert !== null;
+  }
+
   public getLabelText(): string {
     return this.labelText;
+  }
+
+  /** Signed yaw error (degrees, + = the point is to the right) between the camera heading and a world point. */
+  public offAxisDegTo(pos: vec3): number {
+    const cam = this.getCameraPos();
+    const yaw = Math.atan2(pos.x - cam.x, -(pos.z - cam.z)) / DEG;
+    return wrap180(yaw - this.cameraYawDeg());
+  }
+
+  /** Station id of the director alert the arrow follows, or "" when the director has none. */
+  public getDirectorStationId(): string {
+    return this.directorAlert ? this.directorAlert.stationId : "";
   }
 
   // ───────────────────────── setup ─────────────────────────
@@ -275,7 +297,15 @@ export class GazeEdgeBeacon extends BaseScriptComponent {
     });
     this.listen("RESET_REQUESTED", () => {
       this.driftAlert = false;
+      this.directorAlert = null;
       this.side = "NONE";
+    });
+    // v7 Stage 4: the attention director's single alert
+    this.listen("ALERT_RAISED", (d: any) => {
+      if (d && d.stationId) this.directorAlert = { stationId: String(d.stationId), kind: String(d.kind || "") };
+    });
+    this.listen("ALERT_RESOLVED", (d: any) => {
+      if (d && this.directorAlert && String(d.stationId) === this.directorAlert.stationId) this.directorAlert = null;
     });
   }
 
@@ -307,14 +337,35 @@ export class GazeEdgeBeacon extends BaseScriptComponent {
     return "";
   }
 
+  /** World point the arrow points at: the director's station when it has an alert, else the skillet. */
+  private activeTargetPos(): vec3 {
+    if (this.directorAlert) {
+      const sensor = HandZoneSensor.getInstance();
+      const p = sensor ? sensor.getStationWorldPos(this.directorAlert.stationId) : null;
+      if (p) return p;
+    }
+    return this.getTargetPos();
+  }
+
+  private directorLabel(): string {
+    const a = this.directorAlert;
+    if (!a) return "";
+    const name = a.stationId === "PLATING" ? "PLATE" : a.stationId.replace(/_/g, " ").toUpperCase();
+    const what =
+      a.kind === "HEAT_GUARD" ? "HEAT GUARD" : a.kind === "DRIFT" ? "VERIFY LOW HEAT" : a.kind === "STEP_START" ? "NEXT STEP" : a.kind === "TIMER_UNDER_10" ? "TIMER ENDING" : "LOOK HERE";
+    return `${name}: ${what}`;
+  }
+
   private onUpdate(): void {
     if (!this.left) return;
     const dt = getDeltaTime();
     const reason = this.criticalReason();
-    this.offAxisDeg = wrap180(this.getTargetYawDeg() - this.cameraYawDeg());
+    const hasDirector = this.directorAlert !== null;
+    const active = reason !== "" || hasDirector;
+    this.offAxisDeg = this.offAxisDegTo(this.activeTargetPos());
     const mag = Math.abs(this.offAxisDeg);
 
-    if (reason === "") {
+    if (!active) {
       this.side = "NONE";
     } else if (this.side === "NONE") {
       if (mag > this.showAboveDeg) this.side = this.offAxisDeg > 0 ? "RIGHT" : "LEFT";
@@ -325,8 +376,9 @@ export class GazeEdgeBeacon extends BaseScriptComponent {
     }
 
     const rem = this.dagController ? this.dagController.getSkilletRemaining() : 0;
-    this.labelText = reason === "" ? "" : `SKILLET: ${reason} ${formatMMSS(rem)}`;
-    const color = this.driftAlert ? CORAL : GOLD;
+    if (reason !== "") this.labelText = `SKILLET: ${reason} ${formatMMSS(rem)}`;
+    else this.labelText = hasDirector ? this.directorLabel() : "";
+    const color = this.driftAlert || (hasDirector && reason === "") ? CORAL : GOLD;
     this.updateBeacon(this.left, this.side === "LEFT", -1, color, dt);
     this.updateBeacon(this.right, this.side === "RIGHT", 1, color, dt);
   }

@@ -9,6 +9,8 @@ import { RapidRouterVisionService } from "./AI/RapidRouterVisionService";
 import { VisionScanStandIn } from "./AI/VisionScanStandIn";
 import { VisionConfig } from "./AI/VisionConfig";
 import { GazeEdgeBeacon } from "./GazeEdgeBeacon";
+import { HandZoneSensor } from "./HandZoneSensor";
+import { AttentionDirector } from "./AttentionDirector";
 import { DAGCounterConduit, createWorldIcon, splitMetric, layoutSplitText } from "./DAGCounterConduit";
 import { DiegeticChronoRing } from "./DiegeticChronoRing";
 import { SpatulaTechniqueGuide } from "./SpatulaTechniqueGuide";
@@ -335,6 +337,8 @@ export class MiseFlowSpatialUI extends BaseScriptComponent {
     KitchenPersistence.ensure(); // v7 S2: kitchen memory (empty store = no change)
     StationTargetHub.ensure(); // v7 S3: one big target per station (pills, step cards and the dock leave the product view)
     DirectorPalette.ensure(); // v7 S3: the dock lives on as the hidden Director palette
+    HandZoneSensor.ensure(); // v7 S4: hands as the sensor (HAND_AT_STATION / HAND_LEFT_STATION)
+    AttentionDirector.ensure(); // v7 S4: one alert at a time, spatial chime + edge arrow
     let layer = findByName(root, "DiegeticLayer");
     if (!layer) {
       layer = global.scene.createSceneObject("DiegeticLayer");

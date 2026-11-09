@@ -25,6 +25,8 @@ import { ClaimStationsScenario } from "./ClaimStationsScenario";
 import { KitchenRecallScenario } from "./KitchenRecallScenario";
 import { SingleUiInvariantScenario } from "./SingleUiInvariantScenario";
 import { FovBudgetScenario } from "./FovBudgetScenario";
+import { HandZoneTargetScenario } from "./HandZoneTargetScenario";
+import { AttentionChimeBeaconScenario } from "./AttentionChimeBeaconScenario";
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
@@ -152,6 +154,14 @@ export class LeafIndex extends BaseScriptComponent {
     {
       id: "fov-budget-scenario",
       typename: FovBudgetScenario.getTypeName(),
+    },
+    {
+      id: "hand-zone-target-scenario",
+      typename: HandZoneTargetScenario.getTypeName(),
+    },
+    {
+      id: "attention-chime-beacon-scenario",
+      typename: AttentionChimeBeaconScenario.getTypeName(),
     },
   ];
 
